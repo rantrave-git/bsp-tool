@@ -122,17 +122,38 @@ space_re = re.compile(r"\s\s*")
 def parse_property(line):
     vars = list([x for x in space_re.split(line) if x])
     i = 0
-    while i < len(vars):
-        if vars[i] == '(':
-            sub = []
-            while i < len(vars):
+    try:
+        while i < len(line):
+            if line[i].isspace():
+                p0 += 1
                 i += 1
-                if vars[i] == ')': break
-                sub.append(vars[i])
-            yield sub
-        else:
-            yield vars[i]
-        i += 1
+                continue
+            if line[i] == '(':
+                i += 1
+                pp0 = i
+                while i < len(line) and line[i] != ')':
+                    i += 1
+                if line[i] == ')':
+                    pp1 = i
+                else:
+                    raise ValueError("')' expected before line ending")
+                yield space_re.split(line[pp0:pp1])
+                i+=1
+                continue
+            if line[i].isalnum() or line[i] == '.' or line[i] == '_' or line[i] == '-' or line[i] == '$' or line[i] == '*':
+                p0 = i
+                while i < len(line) and not line[i].isspace():
+                    i += 1
+                yield line[p0:i]
+                continue
+            if line[i] == '/' and i < len(line) + 1 and line[i+1] == '/':
+                while i < len(line):
+                    i += 1
+                continue
+            raise ValueError(f"Unexpected symbol '{line[i]}'")
+    except:
+        print(line)
+        raise
     
 def get_property_key(prop):
     prop.keys()
@@ -260,18 +281,18 @@ def property_print(prop):
         yield f"{k}  {' '.join([x for x in print_v(v)])}"
 
 def shader_formatted_print(shader):
-    s = shader["name"] + '\n'
+    s = shader.get("name", 'noname') + '\n'
     if "contents" not in shader or "flags" not in shader:
-        shader["contents"], shader["flags"] = build_surfparam(shader["properties"])
+        shader["contents"], shader["flags"] = build_surfparam(shader.get("properties", []))
         
     s += f"// contents: 0x{shader.get('contents'):x}\n"
     s += f"// flags: 0x{shader.get('flags'):x}\n"
     tab = " " * 2
     s += "{\n"
-    for prop in shader["properties"]:
+    for prop in shader.get("properties", []):
         for i in property_print(prop):
             s += f"{tab}{i}\n"
-    for ps in shader["pass"]:
+    for ps in shader.get("pass", []):
         s += tab + "{\n"
         for prop in ps:
             for i in property_print(prop):
@@ -281,7 +302,7 @@ def shader_formatted_print(shader):
     return s
 
 def get_references(shader):
-    for p in shader.get("properties"):
+    for p in shader.get("properties", []):
         mp = p.get("skyparms", [])
         if len(mp) > 2: # correctly defined
             if mp[0] != '-':

@@ -403,16 +403,17 @@ class MaterialHelper:
         mat.node_tree.nodes.clear()
         if tex.type == 'IMAGE':
             lm = h.lightmap([x.image if x.image else 1.0 for x in bpy.context.scene.bsp_lightmaps])
-            t = BSP_Texture.find_texture(tex.pak, tex.path, context)
-            if t and t.image:
-                map = h.map(t.image)
+            img = BSP_Texture.find_image(tex.pak, tex.path, context)
+            if img:
+                map = h.map(img)
             else:
-                map = h.missing()
-            dst = h.mix(1.0, map[0], lm[0], type='MULTIPLY'), map[1]
+                map = h.missing(None)
+            dst = h.mix(0.0 if context.scene.bsp_disable_lightmap else 1.0, map[0], lm[0], type='MULTIPLY'), map[1]
+            dst[0].node.name = 'LightmapOutput'
         elif tex.type == 'SHADER':
             dst = (0.0, 0.0)
             sh = json.loads(tex.shader)
-            for ps in sh['pass']:
+            for ps in sh.get('pass', []):
                 # get uv
                 tc_gen = []
                 for i in ps:
@@ -436,9 +437,9 @@ class MaterialHelper:
                         for j in ps:
                             if 'tcmod' in j:
                                 uv = h.tc_mod(uv, *j['tcmod'])
-                        t = BSP_Texture.find_texture(None, v[0], context)
-                        if t and t.image:
-                            map = h.map(t.image, uv, clamp='clampmap' in i)
+                        img = BSP_Texture.find_image(None, v[0], context)
+                        if img:
+                            map = h.map(img, uv, clamp='clampmap' in i)
                         else:
                             map = h.missing(uv)
                         break
@@ -449,9 +450,9 @@ class MaterialHelper:
                         for j in ps:
                             if 'tcmod' in j:
                                 uv = h.tc_mod(uv, *j['tcmod'])
-                        t = BSP_Texture.find_texture(None, v[1], context)
-                        if t and t.image:
-                            map = h.map(t.image, uv)
+                        img = BSP_Texture.find_image(None, v[1], context)
+                        if img:
+                            map = h.map(img, uv)
                         else:
                             map = h.missing(uv)
                         break
@@ -532,13 +533,14 @@ class BSP_Texture(bpy.types.PropertyGroup):
     
     @classmethod
     def list_groups(cls, context):
-        return ["<custom>"] + list(set([y for y in [qsl.get_group(x.path) for x in context.scene.bsp_textures] if y is not None]))
+        return list(set([y for y in [qsl.get_group(x.path) for x in context.scene.bsp_textures] if y is not None]))
     @classmethod
     def list_textures(cls, group, context):
         for i in context.scene.bsp_textures:
             if qsl.match_group(group, i.path):
                 yield i
         for m in bpy.data.materials:
+            print(group, m.texture.path)
             if qsl.match_group(group, m.texture.path):
                 yield m.texture
     
@@ -589,7 +591,7 @@ class BSP_Texture(bpy.types.PropertyGroup):
         tx.pak = pak_path
         tx.path = shader['name']
         tx.shader = json.dumps(shader)
-        c, f = qsl.build_surfparam(shader['properties'])
+        c, f = qsl.build_surfparam(shader.get('properties', []))
         tx.contents, tx.flags = to_uint(c), to_uint(f)
         
         icon = qsl.get_image(shader)
@@ -598,14 +600,19 @@ class BSP_Texture(bpy.types.PropertyGroup):
         #print(f'[{shader["name"]}] {pak_path}')
         imgpath = qsl.get_image(shader)
         if imgpath is None: return tx
-        imgtx = cls.find_texture(pak_path, imgpath, context)
-        if imgtx is None: return tx
-        tx.image = imgtx.image
+        img = cls.find_image(pak_path, imgpath, context)
+        if img is None: return tx
+        tx.image = img
         return tx
     
     @classmethod
-    def create_texture(cls, mat, type, image, shader, context):
-        pass
+    def create_texture(cls, name, tex_type, image, shader, context):
+        tx = context.scene.bsp_textures.add()
+        tx.set_name(name)
+        tx.type = tex_type
+        tx.image = image
+        tx.shader = shader
+        return tx
         
     @staticmethod
     def __p(p):
@@ -618,6 +625,7 @@ class BSP_Texture(bpy.types.PropertyGroup):
         for i in context.scene.bsp_textures:
             if i.type == 'IMAGE' and i.image and (pak is None or i.pak == pak) and BSP_Texture.__p(i.path) == BSP_Texture.__p(path):
                 return i
+        
         return None
     
     @classmethod
@@ -628,7 +636,7 @@ class BSP_Texture(bpy.types.PropertyGroup):
         return None
 
     @classmethod
-    def find_texture(cls, pak_path, path, context):
+    def find_image(cls, pak_path, path, context):
         imgtx = cls.get_texture(pak_path, path, context)
         if imgtx is None:
             imgtx = cls.get_texture(None, path, context)
@@ -637,14 +645,30 @@ class BSP_Texture(bpy.types.PropertyGroup):
                 # [FIXME] Do the search
                 return None
             print(f"WARNING! Texture '{path}' couldn't be located at pak '{pak_path}'. '{imgtx.pak}:{imgtx.path}' used.")
-        return imgtx
+            # use custom image
+            if path in bpy.data.images:
+                return bpy.data.images[path]
+        return imgtx.image
+    
+    @classmethod
+    def find_texture(cls, image, context):
+        for i in context.scene.bsp_textures:
+            if i.type == 'IMAGE' and i.image == image:
+                return i
+        return None
     
     @classmethod
     def cleanup(cls, context):
         wm = context.window_manager
-        to_delete = list([i for i,v in enumerate(context.scene.bsp_textures) if v.type == 'IMAGE' and v.image == None])
+        context.scene.bsp_selected_texture = -1
+        used = set()
+        to_delete = list([i for i,v in enumerate(context.scene.bsp_textures) if v.type == 'IMAGE' and v.image == None or v.is_custom()])
         for i in to_delete[::-1]:
             context.scene.bsp_textures.remove(i)
+        for m in bpy.data.materials:
+            if not m.texture.is_custom() or not m.texture.is_valid():
+                continue
+            m.texture.copy_to(context.scene.bsp_textures.add())
         wm.progress_begin(0, len(context.scene.bsp_textures))
         try:
             for prog, i in enumerate(context.scene.bsp_textures):
@@ -653,32 +677,42 @@ class BSP_Texture(bpy.types.PropertyGroup):
                     continue
                 imgpath = qsl.get_image(json.loads(i.shader))
                 if imgpath is None: continue
-                imgtx = cls.find_texture(i.pak, imgpath, context)
-                if imgtx is None: continue
-                i.image = imgtx.image
+                img = cls.find_image(i.pak, imgpath, context)
+                if img is None: continue
+                i.image = img
         finally:
             wm.progress_end()
             
     @classmethod
     def remove_unused(cls, context):
-        used = set()
+        used_materials = set()
+        used_images = set()
         for m in bpy.data.materials:
-            for t in m.texture.deps(context):
-                if t and t.pak:
-                    used.add((t.pak, t.path))
+            t = m.texture
+            used_materials.add((t.pak, t.path))
+            for i in m.texture.deps(context):
+                if i:
+                    print("USED " + i.name)
+                    used_images.add((i.name))
         
         inds = []
         for i,t in enumerate(context.scene.bsp_textures):
-            if (t.pak, t.path) in used:
+            if (t.pak, t.path) in used_materials or (t.type == 'IMAGE' and t.image in used_images):
+                print("YES " + t.path)
                 continue
             inds.append(i)
         for i in inds[::-1]:
             tx = context.scene.bsp_textures[i]
-            if tx.image and tx.image.name in bpy.data.images:
+            if tx.type == 'IMAGE' and tx.image and tx.image.name in bpy.data.images and tx.image.name not in used_images:
                 bpy.data.images.remove(tx.image)
             context.scene.bsp_textures.remove(i)
             
         cls.cleanup(context)
+        
+    def is_valid(self):
+        if self.type == 'SHADER':
+            return self.shader and self.path
+        return self.image and self.path
         
     def set_name(self, name):
         self.pak = ''
@@ -686,8 +720,12 @@ class BSP_Texture(bpy.types.PropertyGroup):
         
     def get_name(self):
         s = self.path.split('/')
-        if len(s) > 2: return '/'.join(s[2:])
-        return self.path
+        if len(s) < 2:
+            return self.path
+        return '/'.join(s[2:])
+    
+    def get_descriptor(self):
+        return self.pak
         
     def is_custom(self):
         return not self.pak
@@ -719,6 +757,12 @@ class BSP_Texture(bpy.types.PropertyGroup):
             mat.surface_type = 'FLESH'
         return mat
     
+    def make_custom(self, name, context):
+        if not self.is_custom():
+            self.set_name(name)
+            tx = context.scene.bsp_textures.add()
+            self.copy_to(tx)
+    
     def find_material(self):
         for i in bpy.data.materials:
             if self.pak == i.texture.pak and self.path == i.texture.path:
@@ -727,12 +771,13 @@ class BSP_Texture(bpy.types.PropertyGroup):
         
     def deps(self, context):
         if self.type == 'IMAGE':
-            yield self
+            yield self.image
             return
         sh = json.loads(self.shader)
         for ref in qsl.get_references(sh):
-            rt = BSP_Texture.find_texture(self.pak, ref, context)
-            yield rt
+            rt = BSP_Texture.find_image(self.pak, ref, context)
+            if rt:
+                yield rt
         
     def maps(self):
         if self.type == 'IMAGE':
@@ -746,99 +791,22 @@ class BSP_Texture(bpy.types.PropertyGroup):
             if m.startswith('$'):
                 yield (None, map)
                 continue
-            rt = BSP_Texture.find_texture(self.pak, m, context)
-            yield (rt.image, map)
+            rt = BSP_Texture.find_image(self.pak, m, context)
+            yield (rt, map)
 
-def shader_validate(shader_code, mode='QSL'):
-    if mode == 'QSL':
-        sh = qsl.parse_shader(shader_code, False)
-    elif mode == 'JSON':
-        sh = json.loads(shader_code)
     
-    wave_type = {
-        "sin": [],
-        "triangle": [],
-        "square": [],
-        "sawtooth": [],
-        "inversesawtooth": []
-    }
-    allowed_general = {
-        "skyparms": [
-            'skybox',
-            'float',
-            'skybox',
-        ],
-        "cull": {
-            "front": [], 
-            "back": [],
-            "disable": [],
-            "none": []
-        },
-        "deformvertexes": [{
-            "wave": [
-                'float', # div
-                wave_type,
-                'float', # base
-                'float', # amp
-                'float', # phase
-                'float', # freq
-            ],
-            "normal": [
-                'float',
-                wave_type,
-                'float',
-                'float',
-                'float',
-            ],
-            "bulge": [
-                'float',
-                'float',
-                'float',
-            ],
-            "move": [
-                'float',
-                'float',
-                'float',
-                wave_type,
-                'float',
-                'float',
-                'float',
-                'float',
-            ],
-            "autosprite": [],
-            "autosprite2": []
-        }],
-        "fogparms": [
-            'vector',
-            'float'
-        ],
-        "nopicmip": [],
-        "nomipmaps": [],
-        "polygonoffset": [],
-        "portal": [],
-        "sort": ['int'],
-        "surfaceparm": [
-            {k: [] for k in qsl.surfparms}
-        ],
-        
-    }
-
-class BSP_PT_ShaderEditing(bpy.types.Panel):
-    bl_space_type = "TEXT_EDITOR"
-    bl_region_type = "UI"
-    bl_label = "Shader Editor"
-    bl_category = "BSP"
-    bl_options = {'DEFAULT_CLOSED'}
-    
-    def draw(self, context):
-        pass
+# ============================================================================================
+#
+#   TEXTURE PANEL
+#
+# ============================================================================================
 
 class BSP_UL_TextureImage(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, icon, _active_data, _active_propname, _index):
         slot = item
         img = slot.image
         name = slot.get_name()
-        pak = slot.pak
+        pak = slot.get_descriptor()
         parms = {}
         icoparms = {'icon': 'MATERIAL' if slot.type == 'SHADER' else 'TEXTURE'}
         if img:
@@ -863,8 +831,9 @@ class BSP_UL_TextureImage(bpy.types.UIList):
 #        vgroups = getattr(data, propname)
         helper_funcs = bpy.types.UI_UL_list
         group = BSP_MT_TextureGroupSelectionMenu.get_selected_text()
-        flt_flags = [self.bitflag_filter_item if qsl.match_group(group, i.path) and (self.filter_name == "" or self.filter_name.lower() in i.get_name().lower()) else 0 for i in scene.bsp_textures]
-        flt_neworder = list(range(len(scene.bsp_textures)))
+        textures = scene.bsp_textures
+        flt_flags = [self.bitflag_filter_item if qsl.match_group(group, i.path) and (self.filter_name == "" or self.filter_name.lower() in i.get_name().lower()) else 0 for i in textures]
+        flt_neworder = list(range(len(textures)))
         return flt_flags, flt_neworder
 
 class BSP_Lightmap(bpy.types.PropertyGroup):
@@ -914,7 +883,7 @@ class BSP_MT_TextureGroupSelectionMenu(bpy.types.Operator):
         
     def execute(self,context):
         bpy.app.driver_namespace['.bsp_selected_group'] = self.items
-        context.scene.bsp_selected_texture = 0
+        context.scene.bsp_selected_texture = -1
         return {'FINISHED'}
     
 class BSP_OP_TexturesRemoveUnused(bpy.types.Operator):
@@ -1023,7 +992,7 @@ class BSP_OP_TextureAssignMaterial(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         sc = context.scene
-        return (context.mode == 'OBJECT' or context.mode == 'EDIT_MESH') and sc and sc.bsp_selected_texture > 0 and sc.bsp_selected_texture < len(sc.bsp_textures)
+        return (context.mode == 'OBJECT' or context.mode == 'EDIT_MESH') and sc and sc.bsp_selected_texture >= 0 and sc.bsp_selected_texture < len(sc.bsp_textures)
 
 class BSP_OP_ResizeLightmap(bpy.types.Operator):
     bl_idname = "bsp.resize_lightmap"
@@ -1172,6 +1141,59 @@ class BSP_OP_BakeLightmap(bpy.types.Operator):
         sc.bsp_disable_lightmap = lmdis
         return {'FINISHED'}
 
+class BSP_OP_MaterialUpdatePreview(bpy.types.Operator):
+    bl_idname = "bsp.update_preview"
+    bl_label = "Update"
+    bl_description = "Update preview image."
+    bl_options = {'REGISTER', 'INTERNAL'}
+    @classmethod
+    def poll(cls, context):
+        return context.material and context.material.texture.image
+    def execute(self, context):
+        if context.material:
+            set_preview_image(context.scene, context.material.texture.image)
+        return {'FINISHED'}
+        
+def preview(sc, st, col):
+    row = col.row(align=True)
+    b = None
+    if sc.bsp_preview and sc.bsp_preview.image:
+        row.template_preview(sc.bsp_preview, show_buttons=True)
+        b = row.column(align=True)
+        row = col.row(align=True)
+        row.prop(sc.bsp_preview, 'use_alpha')
+        row.prop(sc.bsp_preview.image, 'alpha_mode', text='', )
+    if st:
+        # info
+        if st.type == 'IMAGE':
+            r = col.row(align=True)
+            r.label(text="Texture image")
+            r.label(text=st.path)
+            if st.pak:
+                r = col.row(align=True)
+                r.label(text="Pak")
+                r.label(text=st.pak)
+            if st.image:
+                r = col.row(align=True)
+                if b:
+                    b.operator(BSP_OP_MaterialUpdatePreview.bl_idname, icon='FILE_REFRESH', text='')
+                r = col.row(align=True)
+                r.label(text="Image")
+                r.label(text=st.image.name)
+                r = col.row(align=True)
+                r.label(text="Size")
+                r.label(text=f"{st.image.size[0]}x{st.image.size[1]}")
+            else:
+                col.label(text=f"Image is not loaded. Reload containing pak or do cleanup!", icon='ERROR')
+        else:
+            col.label(text=f"Shader: '{st.path}'")
+            col.label(text=f"Pak: {st.pak}")
+            box = col.box()
+            c = box.column(align=True)
+            s = qsl.shader_formatted_print(json.loads(st.shader))
+            for i in s.split('\n'):
+                c.label(text=i)
+
 class BSP_PT_ScenePanel(bpy.types.Panel):
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -1210,30 +1232,9 @@ class BSP_PT_ScenePanel(bpy.types.Panel):
         
         row = col.row(align=True)
         row.operator(BSP_OP_TextureAssignMaterial.bl_idname, icon='SHADING_RENDERED')
-        row = col.row(align=True)
-        if sc.bsp_preview and sc.bsp_preview.image:
-            row.template_preview(sc.bsp_preview, show_buttons=True)
-            row = col.row(align=True)
-            row.prop(sc.bsp_preview, 'use_alpha')
-            row.prop(sc.bsp_preview.image, 'alpha_mode', text='', )
         if sc.bsp_selected_texture >= 0 and sc.bsp_selected_texture < len(sc.bsp_textures):
-            # info
             st = sc.bsp_textures[sc.bsp_selected_texture]
-            if st.type == 'IMAGE':
-                col.label(text=f"Texture image: '{st.path}'")
-                col.label(text=f"Pak: {st.pak}")
-                if st.image:
-                    col.label(text=f"Size: {st.image.size[0]}x{st.image.size[1]}")
-                else:
-                    col.label(text=f"Image is not loaded. Reload containing pak or do cleanup!", icon='ERROR')
-            else:
-                col.label(text=f"Shader: '{st.path}'")
-                col.label(text=f"Pak: {st.pak}")
-                box = col.box()
-                c = box.column(align=True)
-                s = qsl.shader_formatted_print(json.loads(st.shader))
-                for i in s.split('\n'):
-                    c.label(text=i)
+            preview(sc, st, col)
         
         col.separator()
         col.label(text="Lightmap management:")
@@ -1299,30 +1300,532 @@ class BSP_PT_ObjectPanel(bpy.types.Panel):
             row.prop(ob, "target", text="")
         
 
+# ============================================================================================
+#
+#   MATERIAL PANEL
+#
+# ============================================================================================
+
+class ArgList:
+    def __init__(self, v):
+        if v is None:
+            return
+        elif isinstance(v, str):
+            self.type = v
+            self.args = []
+        elif isinstance(v, list):
+            self.type = "list"
+            self.args = [ArgList(x) for x in v]
+        elif isinstance(v, dict):
+            self.type = "enum"
+            self.args = {k: ArgList(x) for k,x in v.items()}
+        elif isinstance(v, ArgList):
+            self.type = v.type
+            self.args = v.args
+        else:
+            raise ValueError(f"Unknown type of argument '{v.__class__}'")
+    
+    @staticmethod
+    def create(type, args):
+        a = ArgList(None)
+        a.type = type
+        a.args = args
+        return a
+    
+    @staticmethod
+    def array(type, min=1, max=8):
+        return ArgList.create("array", {"type": type, "min_size": min, "max_size": max})
+    
+    def validate(self, arg, context):
+        print(f"validating {self.type}: {arg}")
+        if self.type == 'float':
+            try:
+                x = float(arg[0])
+                return 1
+            except:
+                return f"Expected float number; got: '{arg}'"
+        if self.type == 'int':
+            try:
+                x = int(arg[0])
+                return 1
+            except:
+                return f"Expected integer number, got; '{arg}'"
+        if self.type == 'vector3':
+            try:
+                for i in range(3):
+                    x = float(arg[0][i])
+                return 1
+            except:
+                return f"Expected vector of 3 float numbers; got: '{arg}'"
+        if self.type == 'enum':
+            print(f"enum: {list(self.args.keys())}")
+            if not isinstance(arg[0], str) or arg[0].lower() not in self.args:
+                return f"Expected one of: " + ','.join([f"'{x}'" for x in self.args.keys()]) + f"; got: '{arg}'"
+            r = self.args[arg[0].lower()].validate(arg[1:], context)
+            if isinstance(r, str):
+                return f"{arg[0]}: {r}"
+            return r + 1
+        if self.type == 'list':
+            total = 0
+            for i, a in enumerate(self.args):
+                r = a.validate(arg[total:], context)
+                if isinstance(r, str):
+                    return f"Element {i}: {r}"
+                total += r
+            return total
+        if self.type == 'texture':
+            if not isinstance(arg[0], str):
+                return f"Expected image path; got: {arg[0]}"
+            if arg[0].startswith('$'):
+                if arg[0] in ['$whitemap', '$lightmap']:
+                    return 1
+                return f"Expected map identifier; got {arg[0]}"
+            i = BSP_Texture.find_image(None, arg[0], context)
+            if i is None:
+                return f"Expected image at '{arg[0]}'."
+            return 1
+        if self.type == 'skybox':
+            if not isinstance(arg[0], str):
+                return f"Expected skybox path; got: {arg[0]}"
+            for i in ['bk', 'dn', 'ft', 'lf', 'rt' 'up']:
+                n = arg[0] + f'_{i}'
+                img = BSP_Texture.find_image(None, n, context)
+                if img is None:
+                    return f"Expected image at '{n}'."
+            return 1
+        if self.type == 'array':
+            mn = self.args['min_size']
+            mx = self.args['max_size']
+            tp = self.args['type']
+            #if len(arg) > mx and len(arg) < mn:
+            #    return f"Expected {mn} to {mx} arguments of type '{tp}'"
+            atp = ArgList.create(tp, None)
+            total = 0
+            for i, a in enumerate(arg):
+                if i >= mx: return total
+                r = atp.validate(i, context)
+                if isinstance(r, str):
+                    if i < mn:
+                        return f"Array: {r}"
+                    return total
+                total += r
+            return total
+        if self.type == 'union':
+            res = ""
+            for i in self.args:
+                r = i.validate(arg[0])
+                if not isinstance(r, str): return r
+                res += f"{r}\n"
+            return f"Union: {res}"
+        return f"Not implemented argument type '{self.type}'"
+    
+class ShaderEditor:
+    syntax_wave_type = {
+        "sin": [],
+        "triangle": [],
+        "square": [],
+        "sawtooth": [],
+        "inversesawtooth": []
+    }
+    syntax_general = {
+        "skyparms": ['skybox', 'float', 'skybox'],
+        "cull": {"front": [], "back": [], "disable": [], "none": []},
+        "deformvertexes": [{
+            "wave": [
+                'float', # div
+                syntax_wave_type,
+                'float', 'float', 'float', 'float',
+            ],
+            "normal": [
+                'float',
+                syntax_wave_type,
+                'float', 'float', 'float',
+            ],
+            "bulge": ['float', 'float', 'float'],
+            "move": [
+                'float', 'float', 'float',
+                syntax_wave_type,
+                'float', 'float', 'float', 'float',
+            ],
+            "autosprite": [],
+            "autosprite2": []
+        }],
+        "fogparms": ['vector3', 'float'],
+        "nopicmip": [],
+        "nomipmaps": [],
+        "polygonoffset": [],
+        "portal": [],
+        "sort": 'int',
+        "surfaceparm": [{k: [] for k in qsl.surfparms}]
+    }
+    syntax_blend_mode = {
+        'gl_one': [],
+        'gl_zero': [],
+        'gl_dst_color': [],
+        'gl_one_minus_dst_color': [],
+        'gl_src_color': [],
+        'gl_one_minus_src_color': [],
+        'gl_dst_alpha': [],
+        'gl_one_minus_dst_alpha': [],
+        'gl_src_alpha': [],
+        'gl_one_minus_src_alpha': [],
+    }
+    syntax_pass = {
+        "map": "texture",
+        "clampmap": "texture",
+        "animmap": ["float", ArgList.array("texture", 1, 8)],
+        "blendfunc": [syntax_blend_mode, syntax_blend_mode],
+        "rgbgen": {
+            "identitylighting": [],
+            "identity": [],
+            "overbright": [],
+            "wave": [syntax_wave_type, "float", "float", "float", "float"],
+            "entity": [],
+            "oneminusentity": [],
+            "vertex": [],
+            "oneminusvertex": [],
+            "lightingdiffuse": [],
+            "const": "vector3"
+        },
+        "alphagen": {
+            "portal": ArgList.array("int", 0, 1),
+            "specular": [],
+            "wave": [syntax_wave_type, "float", "float", "float", "float"],
+            "entity": [],
+            "oneminusentity": [],
+            "vertex": [],
+            "oneminusvertex": [],
+        },
+        "tcgen": {
+            "base": [],
+            "lightmap": [],
+            "envinroment": [],
+            "vector": ["vector3", "vector3"],
+        },
+        "tcmod": {
+            "rotate": ["float", "float"],
+            "scale": ["float", "float"],
+            "scroll": ["float", "float"],
+            "transform": ["float", "float", "float", "float", "float", "float"],
+            "stretch": [syntax_wave_type,
+                "float", "float", "float", "float"],
+            "turb": ["float", "float", "float", "float"],
+        },
+        "depthfunc": {
+            "lequal": [],
+            "equal": []
+        },
+        "depthwrite": [],
+        "detail": [],
+        "alphafunc": {
+            "gt0": [],
+            "lt128": [],
+            "ge128": [],
+        }
+    }
+    @staticmethod
+    def parse(shader_code, mode='QSL'):
+        if mode == 'QSL':
+            shs = list(qsl.parse_shader(shader_code, False))
+            if len(shs) < 1:
+                raise ValueError("No shaders parsed")
+            return shs[0]
+        elif mode == 'JSON':
+            return json.loads(shader_code)
+        raise KeyError(f'Unknown mode {mode}')
+        
+    @staticmethod
+    def shader_validate(sh, context):
+        st_prop = ArgList(ShaderEditor.syntax_general)
+        errors = []
+        for p in sh.get("properties", []):
+            for k,v in p.items():
+                if k.startswith('qer_') or k.startswith('q3map_'):
+                    continue
+                r = st_prop.validate([k, *v], context)
+                if isinstance(r, str):
+                    errors.append(r)
+                    continue
+        
+        st_pass = ArgList(ShaderEditor.syntax_pass)
+        for i, m in enumerate(sh.get("pass", [])):
+            map_defined = False
+            singles = set()
+            for p in m:
+                for k, v in p.items():
+                    r = st_pass.validate([k, *v], context)
+                    if isinstance(r, str):
+                        errors.append(f'[Pass {i}] {r}')
+                        continue
+                
+                    if k in ['map', 'clampmap', 'animmap']:
+                        if map_defined:
+                            errors.append(f"More than one map defined at pass {i}")
+                        map_defined = True
+                        continue
+                    if k in ['blendfunc', 'alphafunc', 'rgbgen', 'alphagen', 'tcgen', 'depthwrite', 'depthfunc', 'detail']:
+                        if k in singles:
+                            errors.append(f"More than one '{k}' defined at pass {i}")
+                        singles.add(k)
+                        continue
+                    if k == 'tcmod':
+                        if len(v) > 0 and v[0] in ["rotate","scale","scroll","transform","stretch","turb"]:
+                            if v[0] in singles:
+                                errors.append(f"More than one '{k}' of '{v[0]}' type defined at pass {i}")
+                            singles.add(v[0])
+                        continue
+                    errors.append(f"Unknown property '{k}' defined at pass {i}")
+        return errors
+    
+
+class BSP_OP_CreateMaterialShader(bpy.types.Operator):
+    bl_idname = "bsp.material_create_shader"
+    bl_label = "Create shader"
+    bl_description = "Create material as shader"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        BSP_Texture.create_texture(context.material.name, 'SHADER', None, '{\n}', context).copy_to(context.material.texture)
+        set_preview_image(context.scene, context.material.texture.image)
+        MaterialHelper.update_material(context.material, context)
+        return {'FINISHED'}
+class BSP_OP_CreateMaterialImage(bpy.types.Operator):
+    bl_idname = "bsp.material_create_image"
+    bl_label = "Create image"
+    bl_description = "Create material as image"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        tt = BSP_Texture.find_texture(tex.image, context)
+        if tt:
+            tt.copy_to(tex)
+        else:
+            BSP_Texture.create_texture(context.material.texture.image.name, 'IMAGE', context.material.texture.image, '{\n}', context).copy_to(context.material.texture)
+        set_preview_image(context.scene, context.material.texture.image)
+        MaterialHelper.update_material(context.material, context)
+        return {'FINISHED'}
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    def draw(self, context):
+        row = self.layout.row(align=True)
+        row.label(text="Image")
+        row.template_ID(context.material.texture, 'image', text='')
+    @classmethod
+    def poll(cls, context):
+        return context.material and True
+class BSP_OP_EditImage(bpy.types.Operator):
+    bl_idname = "bsp.material_edit_image"
+    bl_label = "Create image"
+    bl_description = "Create material as image"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        tex = context.material.texture
+        tt = BSP_Texture.find_texture(tex.image, context)
+        if tt:
+            tt.copy_to(tex)
+        else:
+            if tex.image:
+                tex.path = tex.image.name
+                tex.pak = ''
+        set_preview_image(context.scene, tex.image)
+        MaterialHelper.update_material(context.material, context)
+        return {'FINISHED'}
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    def draw(self, context):
+        row = self.layout.row(align=True)
+        row.label(text="Image")
+        row.template_ID(context.material.texture, 'image', text='')
+
+class BSP_OP_EditShader(bpy.types.Operator):
+    bl_idname = "bsp.edit_shader"
+    bl_label = "Edit"
+    bl_description = "Edit shader text"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        from uuid import uuid4
+        mat = context.material
+        if not mat.texture.is_custom():
+             mat.texture.make_custom(mat.name, context)
+             
+        is_new = False
+        for i in bpy.data.texts:
+            if i.bsp_material == mat:
+                t = i
+                break
+        else:
+            n = str(f"{mat.name}-{uuid4()}.qsl")
+            t = bpy.data.texts.new(name=n)
+            t.bsp_material = mat
+            is_new = True
+        n = t.name
+        sh = json.loads(mat.texture.shader)
+        sh['name'] = mat.texture.path
+        text = t.as_string().replace(' ', '')
+        stext = qsl.shader_formatted_print(sh)
+        if not is_new and text != stext.replace(' ', ''):
+            self.report({'ERROR'}, f"Shader text changed. Apply or reset changes first.")
+        else:
+            t.from_string(stext)
+        te = [x for x in bpy.context.screen.areas if x.type == "TEXT_EDITOR"]
+        if len(te) == 0:
+            self.report({'INFO'}, f"Open '{n}' in text editor to edit shader")
+            return {'FINISHED'}
+        
+        te[0].spaces[0].text = t
+        return {'FINISHED'}
+    
+    @classmethod
+    def poll(cls, context):
+        return context.material and context.material.texture.type == 'SHADER' and context.material.texture.shader
+
 class BSP_PT_MaterialPanel(bpy.types.Panel):
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "material"
     bl_label = "BSP Material"
     def draw(self, context):
-        #ob = context.object
-        pass
+        layout = self.layout
+        mat = context.material
+        if mat.texture.path:
+            row = layout.row()
+            row.label(text=f'Type is {mat.texture.type}')
+            row = layout.row(align=True)
+            if mat.texture.type == 'SHADER':
+                row.operator(BSP_OP_EditShader.bl_idname, text='Edit shader')
+            else:
+                row.operator(BSP_OP_EditImage.bl_idname, text='Edit image')
+            col = layout.column()
+            preview(context.scene, mat.texture, col)
+        else:
+            row = layout.row(align=True)
+            row.operator(BSP_OP_CreateMaterialImage.bl_idname)
+            row.operator(BSP_OP_CreateMaterialShader.bl_idname)
+    @classmethod
+    def poll(cls, context):
+        return context.material is not None
+
+class BSP_OP_ValidateShader(bpy.types.Operator):
+    bl_idname = "bsp.validate_shader"
+    bl_label = "Validate"
+    bl_description = "Validate shader text"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        tx = context.area.spaces[0].text
+        text = tx.as_string()
+        try:
+            shader = ShaderEditor.parse(text)
+        except ValueError as e:
+            errors.append(str(e))
+        errors = ShaderEditor.shader_validate(shader, context)
+        if len(errors) > 0:
+            for e in errors:
+                self.report({'ERROR'}, e)
+            return {'FINISHED'}
         
-def on_selected_texture_updated(sc, _context):
-    if sc.bsp_selected_texture >= len(sc.bsp_textures):
-        return
+        self.report({'INFO'}, "Shader is valid")
+        return {'FINISHED'}
+    @classmethod
+    def poll(cls, context):
+        tx = context.area.spaces[0].text
+        return tx.bsp_material and tx.bsp_material.texture.type == 'SHADER'
+    
+class BSP_OP_SaveShader(bpy.types.Operator):
+    bl_idname = "bsp.save_shader"
+    bl_label = "Save shader"
+    bl_description = "Compile and save shader into material"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        tx = context.area.spaces[0].text
+        # [TODO] validate!
+        text = tx.as_string()
+        try:
+            shader = ShaderEditor.parse(text)
+        except ValueError as e:
+            errors.append(str(e))
+        errors = ShaderEditor.shader_validate(shader, context)
+        if len(errors) > 0:
+            for e in errors:
+                self.report({'ERROR'}, e)
+            return {'FINISHED'}
+        tx.bsp_material.texture.shader = json.dumps(shader)
+        self.report({'INFO'}, f"Shader 'textures/<custom>/{tx.bsp_material.texture.path}' saved")
+        MaterialHelper.update_material(tx.bsp_material, context)
+        return {'FINISHED'}
+    @classmethod
+    def poll(cls, context):
+        tx = context.area.spaces[0].text
+        return tx.bsp_material and tx.bsp_material.texture.type == 'SHADER'
+
+class BSP_OP_ResetShader(bpy.types.Operator):
+    bl_idname = "bsp.reset_shader"
+    bl_label = "Reset shader"
+    bl_description = "Reset shader to saved at material"
+    bl_options = {'REGISTER', 'INTERNAL'}
+    def execute(self, context):
+        tx = context.area.spaces[0].text
+        mat = tx.bsp_material
+        sh = json.loads(mat.texture.shader)
+        sh['name'] = mat.texture.path
+        tx.from_string(qsl.shader_formatted_print(sh))
+        return {'FINISHED'}
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+    def draw(self, context):
+        self.layout.label(text="Are you sure want to reset shader?")
+    @classmethod
+    def poll(cls, context):
+        tx = context.area.spaces[0].text
+        return tx.bsp_material and tx.bsp_material.texture.type == 'SHADER'
+
+class BSP_PT_ShaderEditing(bpy.types.Panel):
+    bl_space_type = "TEXT_EDITOR"
+    bl_region_type = "UI"
+    bl_label = "Shader Editor"
+    bl_category = "BSP"
+    bl_options = {'DEFAULT_CLOSED'}
+    
+    def draw(self, context):
+        self.layout.operator(BSP_OP_ValidateShader.bl_idname)
+        pass
+
+def add_shader_editor_selection():
+    handle_name = "__shader_editor_func"
+    if handle_name in bpy.app.driver_namespace:
+        bpy.types.TEXT_HT_header.remove(bpy.app.driver_namespace[handle_name])
+        del bpy.app.driver_namespace[handle_name]
+        
+    def use_as_shader_editor_draw(self, context):
+        area = context.area
+        self.layout.separator()
+        row = self.layout.row(align=True)
+        row.label(text='QSL')
+        row.operator(BSP_OP_SaveShader.bl_idname, text='', icon='FILE_TICK')
+        row.operator(BSP_OP_ResetShader.bl_idname, text='', icon='FILE_REFRESH')
+#        self.layout.operator(BSP_OP_SelectAsShaderEditor.bl_idname, depress=context.scene.bsp_shader_editor == area, text='', icon='SHADING_RENDERED')
+    bpy.app.driver_namespace[handle_name] = use_as_shader_editor_draw
+    bpy.types.TEXT_HT_header.append(bpy.app.driver_namespace[handle_name])
+    
+# ============================================================================================
+#
+#   HANDLERS
+#
+# ============================================================================================
+def set_preview_image(sc, image):
     key = ".bsp_preview_texture"
     if key not in bpy.data.textures:
         sc.bsp_preview = bpy.data.textures.new(name=key, type="IMAGE")
         sc.bsp_preview.extension='CLIP'
     else:
         sc.bsp_preview = bpy.data.textures[key]
-    sc.bsp_preview.image = sc.bsp_textures[sc.bsp_selected_texture].image
+    sc.bsp_preview.image = image
+
+def on_selected_texture_updated(sc, _context):
+    if sc.bsp_selected_texture < 0 or sc.bsp_selected_texture >= len(sc.bsp_textures):
+        return
+    set_preview_image(sc, sc.bsp_textures[sc.bsp_selected_texture].image)
 
 def on_disable_lightmap_updated(sc, _content):
     for m in bpy.data.materials:
         MaterialHelper.set_lightmap_disabled(m, sc.bsp_disable_lightmap)
-    
 classes = [
     BSP_OP_ResizeLightmap,
     BSP_OP_AssignLightmap,
@@ -1341,6 +1844,14 @@ classes = [
     BSP_PT_ScenePanel,
     BSP_PT_ObjectPanel,
     BSP_PT_MaterialPanel,
+    BSP_OP_MaterialUpdatePreview,
+    BSP_OP_EditImage,
+    BSP_OP_CreateMaterialShader,
+    BSP_OP_CreateMaterialImage,
+    BSP_OP_ValidateShader,
+    BSP_OP_EditShader,
+    BSP_OP_SaveShader,
+    BSP_OP_ResetShader,
     BSP_PT_ShaderEditing,
 ]
 
@@ -1492,6 +2003,9 @@ props = [
         "bsp_preview": bpy.props.PointerProperty(type=bpy.types.Texture),
         "bsp_executable_path": bpy.props.StringProperty(), # update=on_executable_changed), # not allow to edit as text
     }),
+    (bpy.types.Text, {
+        "bsp_material": bpy.props.PointerProperty(type=bpy.types.Material),
+    }),
     (bpy.types.Material, {
         "material_type": bpy.props.EnumProperty(
             description="Special type of surface",
@@ -1573,15 +2087,6 @@ def register():
         for k, v in d.items():
             setattr(tp, k, v)
     
-
-def register():
-    for cls in classes:
-        bpy.utils.register_class(cls)
-    
-    for tp, d in props:
-        for k, v in d.items():
-            setattr(tp, k, v)
-    
     if tx_preview not in bpy.data.textures:
         bpy.data.textures.new(name=tx_preview, type="IMAGE")
         
@@ -1592,6 +2097,7 @@ def register():
         
     while len(bpy.context.scene.bsp_lightmaps) < 8:
         bpy.context.scene.bsp_lightmaps.add()
+    add_shader_editor_selection()
 
 def unregister():
     for cls in classes:
