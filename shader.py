@@ -3,6 +3,7 @@ import bgl
 import zipfile
 import json
 import os
+import re
 try:
     import qsl
 except ImportError:
@@ -17,32 +18,22 @@ def add_target_arrow():
         uniform vec3 beg;
         uniform vec3 end;
         uniform vec3 cam;
-
         in vec3 position;
         in vec4 color;
-
         void main()
         {
             vec3 pos = mix(beg, end, position);
             vec3 l = normalize(end - beg);
             vec3 c = (beg + end) * 0.5f;
             vec3 o = normalize(cross(c - cam, l));
-            
-            vec3 arr = c - l * 0.5f + color.y * o;
-            
+            vec3 arr = c - l * 0.5f + color.y * o; 
             gl_Position = viewProjectionMatrix * vec4(mix(arr, pos, color.x), 1.0f);
         }
     '''
     fragment_shader = '''
         uniform vec4 color;
-
-        //in vec4 vc;
         out vec4 FragColor;
-
-        void main()
-        {
-            FragColor = color;
-        }
+        void main(){FragColor = color;}
     '''
     handle_name = "__arrow_draw_handle"
 
@@ -95,6 +86,7 @@ def filter_target(self, object):
     return self != object
         
 tx_preview = ".bsp_tex_preview"
+tx_material_preview = ".bsp_material_tex_preview"
 
 def to_uint(i):
     return -(i & 0x7fffffff)-1 if (i & 0x80000000) != 0 else i
@@ -193,12 +185,10 @@ class MaterialHelper:
         if uv:
             self.link(uv, n.inputs['Vector'])
         if clamp:
-            print(image.name, "CLAMPED")
             n.extension = 'CLIP'
         return (n.outputs['Color'], n.outputs['Alpha'])
 
     def mix(self, fac, m0, m1, type='MIX'):
-        print([fac, m0, m1])
         n = self.node('ShaderNodeMixRGB', [fac, m0, m1], blend_type=type)
         return n.outputs['Color']
     
@@ -485,7 +475,6 @@ class MaterialHelper:
                         dst = h.blend(src, dst, 'gl_one', 'gl_zero')
                     else:
                         dst = h.blend(src, dst, 'blend')
-                print(dst[1])
         else: return
 #        h.node('ShaderNodeOutputMaterial', [h.node('ShaderNodeBsdfPrincipled', [], {'Base Color': dst[0], 'Alpha': dst[1]}).outputs[0]])
         h.node('ShaderNodeOutputMaterial', [h.node('ShaderNodeBsdfDiffuse', [dst[0]]).outputs[0]])
@@ -497,6 +486,7 @@ class MaterialHelper:
                 if n.name.startswith('LightmapOutput'):
                     n.inputs['Fac'].default_value = 0.0 if disabled else 1.0
 
+image_name_re = re.compile(r'([^:]*):(.*)')
 
 class BSP_Texture(bpy.types.PropertyGroup):
     pak: bpy.props.StringProperty()
@@ -540,7 +530,7 @@ class BSP_Texture(bpy.types.PropertyGroup):
             if qsl.match_group(group, i.path):
                 yield i
         for m in bpy.data.materials:
-            print(group, m.texture.path)
+            # print(group, m.texture.path)
             if qsl.match_group(group, m.texture.path):
                 yield m.texture
     
@@ -591,7 +581,7 @@ class BSP_Texture(bpy.types.PropertyGroup):
         tx.pak = pak_path
         tx.path = shader['name']
         tx.shader = json.dumps(shader)
-        c, f = qsl.build_surfparam(shader.get('properties', []))
+        c, f = qsl.build_surfparam(shader['properties'])
         tx.contents, tx.flags = to_uint(c), to_uint(f)
         
         icon = qsl.get_image(shader)
@@ -637,18 +627,25 @@ class BSP_Texture(bpy.types.PropertyGroup):
 
     @classmethod
     def find_image(cls, pak_path, path, context):
-        imgtx = cls.get_texture(pak_path, path, context)
-        if imgtx is None:
-            imgtx = cls.get_texture(None, path, context)
-            if imgtx is None:
-                print(f"WARNING! Texture '{path}' couldn't be located at loaded paks")
-                # [FIXME] Do the search
-                return None
-            print(f"WARNING! Texture '{path}' couldn't be located at pak '{pak_path}'. '{imgtx.pak}:{imgtx.path}' used.")
-            # use custom image
-            if path in bpy.data.images:
-                return bpy.data.images[path]
-        return imgtx.image
+        if pak_path:
+            pname = f"{pak_path}:{path}"
+            if pname in bpy.data.images:
+                return bpy.data.images[pname]
+            print(f"WARNING! Texture '{path}' couldn't be located at pak '{pak_path}'.")    
+        if path in bpy.data.images:
+            return bpy.data.images[path]
+        
+        nores = '.'.join(path.split('.')[:-1])
+        for i in bpy.data.images:
+            m = image_name_re.match(i.name)
+            if m:
+                if m[2] == path:
+                    print(f"WARNING! Texture '{path}' couldn't be located. '{i.name}' used.")
+                    return i
+                
+                if m[2][:-4] == nores:
+                    print(f"WARNING! Texture '{path}' couldn't be located with requested resolution. '{i.name}' used.")
+                    return i
     
     @classmethod
     def find_texture(cls, image, context):
@@ -661,7 +658,6 @@ class BSP_Texture(bpy.types.PropertyGroup):
     def cleanup(cls, context):
         wm = context.window_manager
         context.scene.bsp_selected_texture = -1
-        used = set()
         to_delete = list([i for i,v in enumerate(context.scene.bsp_textures) if v.type == 'IMAGE' and v.image == None or v.is_custom()])
         for i in to_delete[::-1]:
             context.scene.bsp_textures.remove(i)
@@ -692,13 +688,11 @@ class BSP_Texture(bpy.types.PropertyGroup):
             used_materials.add((t.pak, t.path))
             for i in m.texture.deps(context):
                 if i:
-                    print("USED " + i.name)
                     used_images.add((i.name))
         
         inds = []
         for i,t in enumerate(context.scene.bsp_textures):
             if (t.pak, t.path) in used_materials or (t.type == 'IMAGE' and t.image in used_images):
-                print("YES " + t.path)
                 continue
             inds.append(i)
         for i in inds[::-1]:
@@ -839,6 +833,10 @@ class BSP_UL_TextureImage(bpy.types.UIList):
 class BSP_Lightmap(bpy.types.PropertyGroup):
     image: bpy.props.PointerProperty(type=bpy.types.Image)
     
+    def init(self, size, index):
+        if self.image is None:
+            self.image = bpy.data.images.new(name=f'bsp-lightmap-{index}', width=size, height=size)
+    
 class BSP_UL_LightmapImage(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, icon, _active_data, _active_propname, _index):
         slot = item
@@ -920,7 +918,6 @@ class BSP_OP_LoadPaks(bpy.types.Operator):
     def execute(self, context):
         sc = context.scene
         for i, f in enumerate(self.files):
-            #print(f.name)
             BSP_Texture.load_pak(os.path.join(os.path.dirname(self.filepath), f.name), context)
         return {'FINISHED'}
     def draw(self, context):
@@ -972,7 +969,6 @@ def run_assign(context):
     bpy.ops.object.mode_set(mode = 'OBJECT')
     bpy.ops.object.mode_set(mode = 'EDIT')
     selected = [(y.name, i) for y in context.selected_objects for i,x in enumerate(y.data.polygons) if y.type == 'MESH' and (x.select or all)]
-    print(selected)
     bpy.ops.object.mode_set(mode = 'OBJECT')
     for n, i in selected:
         bpy.data.objects[n].data.polygons[i].material_index = mats[n]
@@ -1154,15 +1150,15 @@ class BSP_OP_MaterialUpdatePreview(bpy.types.Operator):
             set_preview_image(context.scene, context.material.texture.image)
         return {'FINISHED'}
         
-def preview(sc, st, col):
+def preview(texture, st, col):
     row = col.row(align=True)
     b = None
-    if sc.bsp_preview and sc.bsp_preview.image:
-        row.template_preview(sc.bsp_preview, show_buttons=True)
+    if texture and texture.image:
+        row.template_preview(texture, show_buttons=True)
         b = row.column(align=True)
         row = col.row(align=True)
-        row.prop(sc.bsp_preview, 'use_alpha')
-        row.prop(sc.bsp_preview.image, 'alpha_mode', text='', )
+        row.prop(texture, 'use_alpha')
+        row.prop(texture.image, 'alpha_mode', text='', )
     if st:
         # info
         if st.type == 'IMAGE':
@@ -1234,7 +1230,7 @@ class BSP_PT_ScenePanel(bpy.types.Panel):
         row.operator(BSP_OP_TextureAssignMaterial.bl_idname, icon='SHADING_RENDERED')
         if sc.bsp_selected_texture >= 0 and sc.bsp_selected_texture < len(sc.bsp_textures):
             st = sc.bsp_textures[sc.bsp_selected_texture]
-            preview(sc, st, col)
+            preview(sc.bsp_preview, st, col)
         
         col.separator()
         col.label(text="Lightmap management:")
@@ -1337,7 +1333,7 @@ class ArgList:
         return ArgList.create("array", {"type": type, "min_size": min, "max_size": max})
     
     def validate(self, arg, context):
-        print(f"validating {self.type}: {arg}")
+        # print(f"validating {self.type}: {arg}")
         if self.type == 'float':
             try:
                 x = float(arg[0])
@@ -1358,7 +1354,7 @@ class ArgList:
             except:
                 return f"Expected vector of 3 float numbers; got: '{arg}'"
         if self.type == 'enum':
-            print(f"enum: {list(self.args.keys())}")
+            # print(f"enum: {list(self.args.keys())}")
             if not isinstance(arg[0], str) or arg[0].lower() not in self.args:
                 return f"Expected one of: " + ','.join([f"'{x}'" for x in self.args.keys()]) + f"; got: '{arg}'"
             r = self.args[arg[0].lower()].validate(arg[1:], context)
@@ -1694,7 +1690,7 @@ class BSP_PT_MaterialPanel(bpy.types.Panel):
             else:
                 row.operator(BSP_OP_EditImage.bl_idname, text='Edit image')
             col = layout.column()
-            preview(context.scene, mat.texture, col)
+            preview(context.scene.bsp_material_preview, mat.texture, col)
         else:
             row = layout.row(align=True)
             row.operator(BSP_OP_CreateMaterialImage.bl_idname)
@@ -1809,6 +1805,51 @@ def add_shader_editor_selection():
 #   HANDLERS
 #
 # ============================================================================================
+
+def add_active_material_update_tracker():
+    from bpy.app.handlers import persistent
+    handle_name = "__material_updated_func"
+    if handle_name in bpy.app.driver_namespace:
+        try:
+            bpy.app.timers.unregister(bpy.app.driver_namespace[handle_name])
+        except ValueError:
+            pass
+        del bpy.app.driver_namespace[handle_name]
+    @persistent
+    def active_material_updated():
+        if not bpy.context.object:
+            return
+        material = bpy.context.object.active_material
+        update_material_preview_image(bpy.context.scene, material)
+
+        # check again once every second.
+        return 0.5
+    bpy.app.driver_namespace[handle_name] = active_material_updated
+    bpy.app.timers.register(bpy.app.driver_namespace[handle_name])
+    
+def add_referenced_objects_cleanup():
+    from bpy.app.handlers import persistent
+    handle_name = "__referenced_objects_cleanup_func"
+    if handle_name in bpy.app.driver_namespace:
+        try:
+            bpy.app.timers.unregister(bpy.app.driver_namespace[handle_name])
+        except ValueError:
+            pass
+        del bpy.app.driver_namespace[handle_name]
+    @persistent
+    def referenced_objects_cleanup():
+        to_del = []
+        for o in bpy.data.objects:
+            if bpy.context.scene.objects.get(o.name) is not None:
+                continue
+            to_del.append(o)
+        for o in to_del:
+            bpy.data.objects.remove(o)
+        return 1.0
+    bpy.app.driver_namespace[handle_name] = referenced_objects_cleanup
+    bpy.app.timers.register(bpy.app.driver_namespace[handle_name])
+    
+
 def set_preview_image(sc, image):
     key = ".bsp_preview_texture"
     if key not in bpy.data.textures:
@@ -1817,6 +1858,18 @@ def set_preview_image(sc, image):
     else:
         sc.bsp_preview = bpy.data.textures[key]
     sc.bsp_preview.image = image
+    
+
+def update_material_preview_image(sc, material):
+    key = ".bsp_material_preview_texture"
+    if key not in bpy.data.textures:
+        sc.bsp_material_preview = bpy.data.textures.new(name=key, type="IMAGE")
+        sc.bsp_material_preview.extension='CLIP'
+    else:
+        sc.bsp_material_preview = bpy.data.textures[key]
+    
+    if sc.bsp_material_preview.image != material.texture.image:
+        sc.bsp_material_preview.image = material.texture.image
 
 def on_selected_texture_updated(sc, _context):
     if sc.bsp_selected_texture < 0 or sc.bsp_selected_texture >= len(sc.bsp_textures):
@@ -2001,6 +2054,7 @@ props = [
         "bsp_selected_lightmap": bpy.props.IntProperty(),
         "bsp_disable_lightmap": bpy.props.BoolProperty(update=on_disable_lightmap_updated),
         "bsp_preview": bpy.props.PointerProperty(type=bpy.types.Texture),
+        "bsp_material_preview": bpy.props.PointerProperty(type=bpy.types.Texture),
         "bsp_executable_path": bpy.props.StringProperty(), # update=on_executable_changed), # not allow to edit as text
     }),
     (bpy.types.Text, {
@@ -2079,6 +2133,7 @@ props = [
     })
 ]
 
+
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
@@ -2086,18 +2141,21 @@ def register():
     for tp, d in props:
         for k, v in d.items():
             setattr(tp, k, v)
-    
+        
     if tx_preview not in bpy.data.textures:
         bpy.data.textures.new(name=tx_preview, type="IMAGE")
-        
+    if tx_material_preview not in bpy.data.textures:
+        bpy.data.textures.new(name=tx_material_preview, type="IMAGE")
+
     while len(bpy.context.scene.bsp_lightmaps) < 8:
         bpy.context.scene.bsp_lightmaps.add()
-    if tx_preview not in bpy.data.textures:
-        bpy.data.textures.new(name=tx_preview, type="IMAGE")
         
-    while len(bpy.context.scene.bsp_lightmaps) < 8:
-        bpy.context.scene.bsp_lightmaps.add()
+    for i, lm in enumerate(bpy.context.scene.bsp_lightmaps):
+        lm.init(1024, i)
     add_shader_editor_selection()
+    add_active_material_update_tracker()
+    add_referenced_objects_cleanup()
+    add_target_arrow()
 
 def unregister():
     for cls in classes:
@@ -2111,6 +2169,8 @@ def unregister():
                 delattr(tp, k)
     if tx_preview in bpy.data.textures:
         bpy.data.textures.remove(bpy.data.textures[tx_preview])
+    if tx_material_preview in bpy.data.textures:
+        bpy.data.textures.remove(bpy.data.textures[tx_material_preview])
 
 if __name__ == '__main__':
     unregister()
