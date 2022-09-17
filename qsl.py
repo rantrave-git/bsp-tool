@@ -57,17 +57,19 @@ surfparms = {
     "structural": (Q_CONT_STRUCTURAL, 0, 0, 0), 					# object flag (flag: structural)
     "detail": (Q_CONT_DETAIL, 0, 0, 0), 							# object flag (flag: !structural)
     "nonsolid": (0, Q_CONT_SOLID, Q_SURF_NONSOLID, 0), 				# object flag (flag: !structural)
-    "trans": (Q_CONT_TRANSLUCENT, 0, 0, 0), 						# material property (flag: translucent) [TODO] need a check
-    "slick": (0, 0, Q_SURF_SLICK, 0),								# material property (flag: slick)
-    "noimpact": (0, 0, Q_SURF_NOIMPACT, 0),							# material property (flag: noimpact)
-    "nomarks": (0, 0, Q_SURF_NOMARKS, 0),							# material property (flag: nomarks)
-    "nodamage": (0, 0, Q_SURF_NODAMAGE, 0),							# material property (flag: nodamage)
+    "trans": (Q_CONT_TRANSLUCENT, 0, 0, 0), 						# object flag (flag: translucent)
+    "slick": (0, 0, Q_SURF_SLICK, 0),								# face property (flag: slick; sets on map)
+    "noob": (0, 0, Q_SURF_NOOB, 0),								    # face property (flag: noob; sets on map)
+    "noimpact": (0, 0, Q_SURF_NOIMPACT, 0),							# face property (flag: noimpact; sets on map)
+    "nomarks": (0, 0, Q_SURF_NOMARKS, 0),							# face property (flag: nomarks; sets on map)
+    "nodamage": (0, 0, Q_SURF_NODAMAGE, 0),							# face property (flag: nodamage; sets on map)
+    "nodraw": (0, 0, Q_SURF_NODRAW, 0), 							# face property (type: nodraw; build only, defines only plane in bsp tree) [same as hint but has no preference]
+    "areaportal": (Q_CONT_AREAPORTAL, Q_CONT_SOLID, 0, 0), 			# face property (type: areaportal; build only, faces removed)
+    "hint": (0, 0, Q_SURF_HINT, 0), 								# face property (type: hint; build only, faces removed)
     "metalsteps": (0, 0, Q_SURF_METALSTEPS, 0),						# material property (surface_type: metal)
     "flesh": (0, 0, Q_SURF_FLESH, 0),								# material property (surface_type: flesh)
     "nosteps": (0, 0, Q_SURF_NOSTEPS, 0),							# material property (surface_type: empty)
     "dust": (0, 0, Q_SURF_DUST, 0),									# material property (flag: dust)
-    "areaportal": (Q_CONT_AREAPORTAL, Q_CONT_SOLID, 0, 0), 			# material property (type: portal, flag: zone_border)
-    "hint": (0, 0, Q_SURF_HINT, 0), 								# material property (type: portal, flag: !zone_border)
     "trigger": (Q_CONT_TRIGGER, Q_CONT_SOLID, 0, 0), 				# as special object (volume)
     "playerclip": (Q_CONT_PLAYERCLIP, Q_CONT_SOLID, 0, 0), 			# as special object (volume)
     "water": (Q_CONT_WATER, Q_CONT_SOLID, 0, 0), 					# as special object (volume)
@@ -75,21 +77,20 @@ surfparms = {
     "lava": (Q_CONT_LAVA, Q_CONT_SOLID, 0, 0), 						# as special object (volume)
     "nodrop": (Q_CONT_NODROP, Q_CONT_SOLID, 0, 0), 					# as special object (volume)
     "fog": (Q_CONT_FOG, Q_CONT_SOLID, 0, 0), 						# as special object (volume)
-    "monsterclip": (Q_CONT_MONSTERCLIP, Q_CONT_SOLID, 0, 0), 		# unused
-    "lightgrid": (0, 0, 0, 0),										# unused
-    "antiportal": (0, 0, 0, 0),										# unused
-    "skip": (0, 0, 0, 0),											# unused
-    "nodraw": (0, 0, Q_SURF_NODRAW, 0), 							# unused
-    "alphashadow": (0, 0, Q_SURF_ALPHASHADOW, 0), 					# unused
-    "lightfilter": (0, 0, Q_SURF_LIGHTFILTER, 0), 					# unused
-    "nolightmap": (0, 0, Q_SURF_VERTEXLIT, 0), 						# unused
-    "pointlight": (0, 0, Q_SURF_VERTEXLIT, 0), 						# unused
-    "clusterportal": (Q_CONT_CLUSTERPORTAL, Q_CONT_SOLID, 0, 0), 	# unused
-    "donotenter": (Q_CONT_DONOTENTER, Q_CONT_SOLID, 0, 0), 			# unused
-    "botclip": (Q_CONT_BOTCLIP, Q_CONT_SOLID, 0, 0), 				# unused
-    "sky": (0, 0, Q_SURF_SKY, 0),									# unused
-    "ladder": (0, 0, Q_SURF_LADDER, 0),								# unused
-    "nodlight": (0, 0, Q_SURF_NODLIGHT, 0),							# unused
+    "monsterclip": (Q_CONT_MONSTERCLIP, Q_CONT_SOLID, 0, 0), 		# unused (probably in future releases)
+    "botclip": (Q_CONT_BOTCLIP, Q_CONT_SOLID, 0, 0), 				# unused (probably in future releases)
+    "clusterportal": (Q_CONT_CLUSTERPORTAL, Q_CONT_SOLID, 0, 0), 	# unused (probably in future releases)
+    "donotenter": (Q_CONT_DONOTENTER, Q_CONT_SOLID, 0, 0), 			# unused (probably in future releases)
+    "alphashadow": (0, 0, Q_SURF_ALPHASHADOW, 0), 					# unused (overriden by blender toolchain)
+    "lightfilter": (0, 0, Q_SURF_LIGHTFILTER, 0), 					# unused (overriden by blender toolchain)
+    "nolightmap": (0, 0, Q_SURF_VERTEXLIT, 0), 						# unused (overriden by blender toolchain)
+    "pointlight": (0, 0, Q_SURF_VERTEXLIT, 0), 						# unused (overriden by blender toolchain)
+    "sky": (0, 0, Q_SURF_SKY, 0),									# unused (overriden by blender toolchain)
+    "ladder": (0, 0, Q_SURF_LADDER, 0),								# unused (overriden by blender toolchain)
+    "nodlight": (0, 0, Q_SURF_NODLIGHT, 0),							# unused (overriden by blender toolchain)
+    "lightgrid": (0, 0, 0, 0),										# unused (change nothing)
+    "antiportal": (0, 0, 0, 0),										# unused (change nothing)
+    "skip": (0, 0, 0, 0),											# unused (change nothing)
 }
 
 def build_surfparam(props):
