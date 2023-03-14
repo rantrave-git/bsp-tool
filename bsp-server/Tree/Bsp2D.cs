@@ -4,18 +4,33 @@ using Bsp.Geometry;
 namespace Bsp.Tree;
 
 
-public class BspNode2D
+struct Interval
 {
-    private BspTree2D _tree;
-    private List<int> _faces;
-    private Vector2 _plane;
-    private BspNode _front;
-    private BspNode _back;
+    public float Min;
+    public float Max;
+}
 
-    public void AddFace(int face)
-    {
+interface IBspNode2D
+{
+    BspTree2D Tree { get; }
+    void AddEdge(float min, float max);
+    // BspTree2D Merge(BspNode2D other);
+    IBspNode2D Clone();
+}
+public class BspNode2D : IBspNode2D
+{
+    public BspTree2D Tree { get; init; }
+    // null for leaf
+    private IntervalSystem? _boundary = null;
+    // null for node
+    private HashSet<int>? _faces = null;
+    // ax + by + d = 0
+    private Vector3 _plane;
+    private BspNode2D? _front;
+    private BspNode2D? _back;
 
-    }
+    public void AddEdge(float min, float max) => _boundary?.Add(min, max);
+
 }
 public class BspTree2D
 {
