@@ -1,16 +1,16 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 
-namespace Bsp.Geometry;
+namespace Bsp.Common.Geometry;
 
 [StructLayout(LayoutKind.Sequential)]
-struct VertexData
+public struct VertexData
 {
     public Vector3 Pos;
     public int Flags;
 }
 [StructLayout(LayoutKind.Sequential)]
-struct CornerData
+public struct CornerData
 {
     public Vector2 Uv0;
     public Vector2 Uv1;
@@ -18,14 +18,14 @@ struct CornerData
     public int Vertex;
 }
 [StructLayout(LayoutKind.Sequential)]
-struct FaceData
+public struct FaceData
 {
     public int LoopStart;
     public int LoopTotal;
     public int Flags;
     public int Material;
 }
-class MeshContext
+public class MeshContext
 {
     public VertexData[] Vertices;
     public CornerData[] Corners;
@@ -39,7 +39,7 @@ class MeshContext
 }
 
 
-class Vertex
+public class Vertex
 {
     private Mesh _mesh;
 
@@ -48,24 +48,42 @@ class Vertex
     public Vector4 Color { get; init; }
     public Vertex(Mesh mesh) => _mesh = mesh;
 }
-class Face
+public class Face
 {
     private Mesh _mesh;
     public int[] Indices { get; init; }
     public int Flags { get; init; }
     public int Material { get; init; }
+    public Vector3 Normal { get; private set; }
+    public static Vector3 CalculateNormal(Mesh mesh, int[] indices)
+    {
+        var s = indices.Length;
+        var sum = Vector3.Zero;
+        for (int i = 0; i < indices.Length; ++i)
+        {
+            var v0 = mesh.Vertices[indices[(i + 1) % s]].Pos - mesh.Vertices[indices[i]].Pos;
+            var v1 = mesh.Vertices[indices[(i + 2) % s]].Pos - mesh.Vertices[indices[i]].Pos;
+
+            sum += Vector3.Cross(v0, v1);
+        }
+
+        return Vector3.Normalize(sum);
+    }
     public Face(Mesh mesh, int[] indices)
     {
         _mesh = mesh;
         Indices = indices;
+        Normal = Face.CalculateNormal(mesh, indices);
     }
+    public void UpdateNormal() => Normal = Face.CalculateNormal(_mesh, Indices);
 }
-class Mesh
+public class Mesh
 {
     public List<Vertex> Vertices { get; private set; }
     public List<Face> Faces { get; private set; }
     private SortedSet<int> _removedVertices = new SortedSet<int>();
     private SortedSet<int> _removedFaces = new SortedSet<int>();
+    private Mesh() { }
     public int AddFace(Face face)
     {
         Faces.Add(face);

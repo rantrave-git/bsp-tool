@@ -1,16 +1,18 @@
 using System.Buffers;
-using System.ComponentModel;
 using System.Net;
 using System.Net.Sockets;
-using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using Bsp.Geometry;
+using Bsp.Common.Geometry;
 
-namespace Bsp;
+namespace Bsp.Server;
 
-class CommandController
+public interface ICommandController
+{
+    Task StartAsync(int port, CancellationToken cancellationToken = default);
+}
+
+public class CommandController : ICommandController
 {
     enum Command : Int32
     {
@@ -18,7 +20,7 @@ class CommandController
         EchoMesh = 0x1
     }
     private TcpListener? _listener;
-    public async Task Start(int port, CancellationToken cancellationToken = default)
+    public async Task StartAsync(int port, CancellationToken cancellationToken = default)
     {
         IPAddress localhost = IPAddress.Loopback;
         _listener = new TcpListener(localhost, port);
@@ -35,13 +37,14 @@ class CommandController
                 _ = Stream(client, cancellationToken);
             }
         }
-        catch (SocketException e)
+        catch (SocketException)
         {
-            Console.WriteLine($"[Socket]: {e}");
+            throw;
         }
         finally
         {
             _listener.Stop();
+            Console.WriteLine($"Listening on {port} done!");
         }
     }
     private async Task<bool> TryRead(Stream stream, byte[] dst, int offset, int length)

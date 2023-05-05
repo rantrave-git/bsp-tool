@@ -1,4 +1,4 @@
-namespace Bsp;
+namespace Bsp.Common.Geometry;
 
 class IntervalSystem
 {
@@ -62,6 +62,8 @@ class IntervalSystem
         }
     }
     Node? _left;
+    public float Min { get; private set; } = float.MaxValue;
+    public float Max { get; private set; } = -float.MaxValue;
     public void Add(float min, float max)
     {
         if (_left != null)
@@ -72,6 +74,8 @@ class IntervalSystem
         {
             _left = new Node() { Min = min, Max = max };
         }
+        Min = MathF.Min(min, Min);
+        Max = MathF.Max(min, Max);
     }
     private IEnumerator<Node> Enumerate()
     {
@@ -105,6 +109,7 @@ class IntervalSystem
             var cls = n.Current.Classify(border);
             if (cls == 0)
             {
+                // cut right on interval
                 tail._left = new Node()
                 {
                     Min = border,
@@ -113,18 +118,31 @@ class IntervalSystem
                 };
                 n.Current.Max = border;
                 n.Current.Right = null;
+                Max = border;
+                tail.Min = border;
+                tail.Max = Max;
+                Max = border;
                 break;
             }
             else if (cls == 1)
             {
                 if (n.Current.Left != null)
                 {
+                    // cut inbetween intervals
                     n.Current.Left.Right = null;
+                    tail.Max = Max;
+                    Max = n.Current.Left.Max;
                     n.Current.Left = null;
                     tail._left = n.Current;
+                    tail.Min = tail._left.Min;
                     break;
                 }
+                // cut before first interval
                 tail._left = _left;
+                tail.Min = Min;
+                tail.Max = Max;
+                Min = float.MaxValue;
+                Max = -float.MaxValue;
                 _left = null;
                 break;
             }
