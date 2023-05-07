@@ -1,16 +1,14 @@
-using System.Numerics;
 using Bsp.Common.Geometry;
 
 namespace Bsp.Common.Tree;
 
-public class BspOperationsHelper<TEdgeTree, TContent>
-    where TEdgeTree : ICopyable<TEdgeTree>
-    // where TBspEdge : IBspNode<TBspEdge>
+public class BspOperationsHelper<THull, TContent>
+    where THull : class, IHull<THull>
 {
-    public static long Numerate(BspNode<TEdgeTree, TContent> root)
+    public static long Numerate(BspNode<THull, TContent> root)
     {
         var i = 0L;
-        var q = new Queue<BspNode<TEdgeTree, TContent>>();
+        var q = new Queue<BspNode<THull, TContent>>();
         q.Enqueue(root);
         while (q.TryDequeue(out var n))
         {
@@ -21,10 +19,10 @@ public class BspOperationsHelper<TEdgeTree, TContent>
         return i;
     }
     // node to set of its parents
-    public static Dictionary<long, Dictionary<long, Side>> Order(BspNode<TEdgeTree, TContent> root)
+    public static Dictionary<long, Dictionary<long, Side>> Order(BspNode<THull, TContent> root)
     {
         var result = new Dictionary<long, Dictionary<long, Side>>();
-        var q = new Stack<(BspNode<TEdgeTree, TContent> Node, long Parent, Side Side)>();
+        var q = new Stack<(BspNode<THull, TContent> Node, long Parent, Side Side)>();
         q.Push((root, -1, Side.Back));
         while (q.TryPop(out var n))
         {
@@ -51,7 +49,7 @@ public class BspOperationsHelper<TEdgeTree, TContent>
         return result;
     }
 
-    public static bool TryAdd(ref BspNode<TEdgeTree, TContent>? root, BspNode<TEdgeTree, TContent> node, Dictionary<long, Dictionary<long, Side>> order)
+    public static bool TryAdd(ref BspNode<THull, TContent>? root, BspNode<THull, TContent> node, Dictionary<long, Dictionary<long, Side>> order)
     {
         if (root == null)
         {
@@ -73,9 +71,9 @@ public class BspOperationsHelper<TEdgeTree, TContent>
         return false;
     }
 
-    public static BspNode<TEdgeTree, TContent> MakeLeaf(TContent flags) => new BspNode<TEdgeTree, TContent>(flags);
-    public static BspNode<TEdgeTree, TContent> MakeNode(TEdgeTree plane) => new BspNode<TEdgeTree, TContent>(plane);
-    public static BspNode<TEdgeTree, TContent> MakeNode(TEdgeTree plane, BspNode<TEdgeTree, TContent> back, BspNode<TEdgeTree, TContent> front) => new BspNode<TEdgeTree, TContent>(plane)
+    public static BspNode<THull, TContent> MakeLeaf(TContent flags) => new BspNode<THull, TContent>(flags);
+    public static BspNode<THull, TContent> MakeNode(IBspTree<THull, TContent> plane) => new BspNode<THull, TContent>(plane);
+    public static BspNode<THull, TContent> MakeNode(IBspTree<THull, TContent> plane, BspNode<THull, TContent> back, BspNode<THull, TContent> front) => new BspNode<THull, TContent>(plane)
     {
         back = back,
         front = front,

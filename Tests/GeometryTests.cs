@@ -152,7 +152,7 @@ public class GeometryTests
                 }
 
                 var pplane = ts.Project(nn1);
-                var pp = ts.Plane2D2(v1, v2, out var t1, out var t2);
+                var pp = ts.Plane2D(v1, v2, out var t1, out var t2);
 
 
                 var locn1 = ts.Transform(n1);

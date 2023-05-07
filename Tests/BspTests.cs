@@ -76,7 +76,7 @@ public class BspTests
         // };
         var flags = new long[N - 1];
         var space = new Hull1D(TestContext.CurrentContext.Random.NextVector3());
-        var res = space.CreateBspTree1D(0);
+        IBspTree<Hull1D, long> res = space.CreateBspTree1D(0);
         for (int i = 0; i < 200; ++i)
         {
             var f = i + 1;
@@ -130,9 +130,9 @@ public class BspTests
         t0.Numerate();
         t1.Numerate();
 
-        var p0 = t0.Hull.local.Transform(new Vector3(0.0f, 0.0f, 0.0f));
-        var p1 = t0.Hull.local.Transform(new Vector3(2.0f, 2.0f, 0.0f));
-        var p2 = t0.Hull.local.Transform(new Vector3(-2.0f, -2.0f, 0.0f));
+        var p0 = t0.Hull.Local.Transform(new Vector3(0.0f, 0.0f, 0.0f));
+        var p1 = t0.Hull.Local.Transform(new Vector3(2.0f, 2.0f, 0.0f));
+        var p2 = t0.Hull.Local.Transform(new Vector3(-2.0f, -2.0f, 0.0f));
 
         var inter = t0.Csg(t1, ContentOperations.Space2DIntersect);
         Assert.AreEqual(1, inter.Search(p0.XY()).flags);

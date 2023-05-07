@@ -1,19 +1,19 @@
+using System.Numerics;
 using System.Text;
 using Bsp.Common.Geometry;
 
 namespace Bsp.Common.Tree;
 
 
-public class BspNode<TEdgeTree, TContent> : IBspNode<BspNode<TEdgeTree, TContent>, TContent>
-    where TEdgeTree : ICopyable<TEdgeTree>
+public class BspNode<THull, TContent> where THull : class, IHull<THull>
 {
     public long numeration = -1;
     public TContent flags = default!;
-    public BspNode<TEdgeTree, TContent>? back;
-    public BspNode<TEdgeTree, TContent>? front;
-    public TEdgeTree? edge;
+    public BspNode<THull, TContent>? back;
+    public BspNode<THull, TContent>? front;
+    public IBspTree<THull, TContent>? edge;
     private BspNode() { }
-    public BspNode(TEdgeTree plane)
+    public BspNode(IBspTree<THull, TContent> plane)
     {
         this.edge = plane;
     }
@@ -41,13 +41,13 @@ public class BspNode<TEdgeTree, TContent> : IBspNode<BspNode<TEdgeTree, TContent
         back?.ApplyLeft(operation, lhs);
         front?.ApplyLeft(operation, lhs);
     }
-    public BspNode<TEdgeTree, TContent> Copy() => new BspNode<TEdgeTree, TContent>()
+    public BspNode<THull, TContent> Copy() => new BspNode<THull, TContent>()
     {
         edge = edge == null ? default : edge.Copy(),
         flags = flags,
         numeration = numeration,
     };
-    public BspNode<TEdgeTree, TContent> DeepCopy() => new BspNode<TEdgeTree, TContent>()
+    public BspNode<THull, TContent> DeepCopy() => new BspNode<THull, TContent>()
     {
         edge = edge == null ? default : edge.Copy(),
         flags = flags,
@@ -56,7 +56,7 @@ public class BspNode<TEdgeTree, TContent> : IBspNode<BspNode<TEdgeTree, TContent
         front = front?.DeepCopy(),
     };
     public void Detach() => front = back = null;
-    public BspNode<TEdgeTree, TContent>? GetChild(Side side)
+    public BspNode<THull, TContent>? GetChild(Side side)
     {
         if (side == Side.Incident)
         {
@@ -71,14 +71,14 @@ public class BspNode<TEdgeTree, TContent> : IBspNode<BspNode<TEdgeTree, TContent
         back = front = null;
         edge = default;
     }
-    public void SetNode(BspNode<TEdgeTree, TContent> back, BspNode<TEdgeTree, TContent> front, TEdgeTree edge)
+    public void SetNode(BspNode<THull, TContent> back, BspNode<THull, TContent> front, IBspTree<THull, TContent> edge)
     {
         this.back = back;
         this.front = front;
         this.edge = edge;
         this.flags = default!;
     }
-    public BspNode<TEdgeTree, TContent> SetChild(Side side, BspNode<TEdgeTree, TContent> node)
+    public BspNode<THull, TContent> SetChild(Side side, BspNode<THull, TContent> node)
     {
         if (side == Side.Incident)
         {
@@ -92,12 +92,40 @@ public class BspNode<TEdgeTree, TContent> : IBspNode<BspNode<TEdgeTree, TContent
         if (side == Side.Back) return back = node;
         return front = node;
     }
-    public void SetChildren(BspNode<TEdgeTree, TContent> back, BspNode<TEdgeTree, TContent> front)
+    public void SetChildren(BspNode<THull, TContent> back, BspNode<THull, TContent> front)
     {
         this.back = back;
         this.front = front;
     }
 
     public override string ToString() => edge == null ? $"{numeration} [{flags}]" : $"{numeration} {edge}";
+
+    public BspNode<THull, TContent> Search(Vector<float> point)
+    {
+        var c = this;
+        while (c.edge != null)
+        {
+            c = c.GetChild(c.edge.Hull.GetSide(point));
+            if (c == null) throw new AssertionException("Tree is not full");
+        }
+        return c;
+    }
+    public (BspNode<THull, TContent>? Back, BspNode<THull, TContent>? Front) Split(BspNode<THull, TContent> splitter, ISpaceContentOperation<TContent> operation, out bool flip)
+    {
+        // var splitterLocal = splitter.edge!.Hull.local;
+        // var nodeLocal = this.edge!.Hull.local;
+        flip = splitter.edge!.Hull.IsFlip(edge!.Hull);
+        var (b, f) = this.edge!.Hull.Split(splitter.edge!.Hull);
+        if (b == null || b.Empty) return (null, this);
+        if (f == null || f.Empty) return (this, null);
+        if (b == f) // coincide
+        {
+            if (edge!.Hull.HasSpace) edge!.Csg(splitter.edge!, flip ? operation.Inverse : operation, true);
+            return (this, this);
+        }
+        var backNode = this.Copy();
+        backNode.edge = this.edge.Separate(f, b);
+        return (backNode, this);
+    }
     // public string Info() => edge == null ? $"{numeration}: [{flags}]" : $"{numeration}: {edge}";
 }

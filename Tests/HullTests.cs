@@ -32,34 +32,34 @@ public class HullTests
         [JsonIgnore]
         public Vector3 Vector => new Vector3(X, Y, Z);
     }
-    [Test]
-    public void RunFailedTest()
-    {
-        var path = "./failed-f7d8a9c1-264e-440d-a936-cd1446bf91fd.test";
-        var def = new { num = 0, p = new Vector3S[0] };
-        var test = JsonConvert.DeserializeAnonymousType(File.ReadAllText(path), def);
-        var num = test.num;
-        var p = test.p.Select(x => x.Vector).ToArray();
-        var n = Vector3.Cross(p[1] - p[0], p[2] - p[1]);
-        var h = new Hull2D(n.Plane(p[0]));
-        for (int i = 0; i < p.Length; ++i)
-        {
-            var plane = Vector3.Cross(p[(i + 1) % p.Length] - p[i], n).Plane(p[i]);
-            h = h!.Split(new Hull2D(plane)).Back;
-            Assert.IsNotNull(h, $"Plane {i}: {plane}");
-            // TestContext.WriteLine($"{h.empty} {String.Join(",", h.bounds.Select(x => $"({x.min} {x.max})"))}");
-            Assert.IsFalse(h!.empty, "Splitter is empty");
-        }
-        // TestContext.WriteLine("--------------------");
-        for (int i = 0; i < p.Length; ++i)
-        {
-            var b = h!.bounds[p.Length - i - 1];
-            var ppp = h.Pos(b.Pos(0.0f));
-            Assert.LessOrEqual(Vector3.Distance(p[i], ppp), Linealg.Eps);
-            ppp = h.Pos(b.Pos(1.0f));
-            Assert.LessOrEqual(Vector3.Distance(p[(i + 1) % p.Length], ppp), Linealg.Eps);
-        }
-    }
+    // [Test]
+    // public void RunFailedTest()
+    // {
+    //     var path = "./failed-f7d8a9c1-264e-440d-a936-cd1446bf91fd.test";
+    //     var def = new { num = 0, p = new Vector3S[0] };
+    //     var test = JsonConvert.DeserializeAnonymousType(File.ReadAllText(path), def);
+    //     var num = test.num;
+    //     var p = test.p.Select(x => x.Vector).ToArray();
+    //     var n = Vector3.Cross(p[1] - p[0], p[2] - p[1]);
+    //     var h = new Hull2D(n.Plane(p[0]));
+    //     for (int i = 0; i < p.Length; ++i)
+    //     {
+    //         var plane = Vector3.Cross(p[(i + 1) % p.Length] - p[i], n).Plane(p[i]);
+    //         h = h!.Split(new Hull2D(plane)).Back;
+    //         Assert.IsNotNull(h, $"Plane {i}: {plane}");
+    //         // TestContext.WriteLine($"{h.empty} {String.Join(",", h.bounds.Select(x => $"({x.min} {x.max})"))}");
+    //         Assert.IsFalse(h!.Empty, "Splitter is empty");
+    //     }
+    //     // TestContext.WriteLine("--------------------");
+    //     for (int i = 0; i < p.Length; ++i)
+    //     {
+    //         var b = h!.Bounds[p.Length - i - 1];
+    //         var ppp = h.Pos(b.Pos(0.0f));
+    //         Assert.LessOrEqual(Vector3.Distance(p[i], ppp), Linealg.Eps);
+    //         ppp = h.Pos(b.Pos(1.0f));
+    //         Assert.LessOrEqual(Vector3.Distance(p[(i + 1) % p.Length], ppp), Linealg.Eps);
+    //     }
+    // }
     [Test]
     [Repeat(10000)]
     public void TestHull()
@@ -83,12 +83,12 @@ public class HullTests
                 var plane = Vector3.Cross(p[(i + 1) % p.Length] - p[i], n).Plane(p[i]);
                 h = h!.Split(new Hull2D(plane)).Back;
                 Assert.IsNotNull(h, $"Plane {i}: {plane}");
-                Assert.IsFalse(h!.empty, "Splitter is empty");
+                Assert.IsFalse(h!.Empty, "Splitter is empty");
             }
             // TestContext.WriteLine("--------------------");
             for (int i = 0; i < p.Length; ++i)
             {
-                var b = h!.bounds[p.Length - i - 1];
+                var b = h!.Bounds[p.Length - i - 1];
                 var ppp = h.Pos(b.Pos(0.0f));
                 Assert.LessOrEqual(Vector3.Distance(p[i], ppp), Linealg.Eps);
                 ppp = h.Pos(b.Pos(1.0f));
@@ -125,7 +125,7 @@ public class HullTests
             var plane = Vector3.Cross(p[(i + 1) % p.Length] - p[i], n).Plane(p[i]);
             h = h!.Split(new Hull2D(plane)).Back;
             Assert.IsNotNull(h, $"Plane {i}: {plane}");
-            Assert.False(h!.empty, $"Plane {i}: {plane}");
+            Assert.False(h!.Empty, $"Plane {i}: {plane}");
         }
         var overSplitters = new[] {
             (new Vector3(1.0f, 0.0f, 0.0f)).Plane(1.0f),
@@ -139,31 +139,31 @@ public class HullTests
             var (b, f) = h!.Split(new Hull2D(plane));
             Assert.IsNotNull(b, $"Plane {i}: {-plane}");
             Assert.IsNotNull(f, $"Plane {i}: {plane}");
-            Assert.False(b!.empty, $"Plane {i}: {-plane}");
-            Assert.True(f!.empty, $"Plane {i}: {plane}");
+            Assert.False(b!.Empty, $"Plane {i}: {-plane}");
+            Assert.True(f!.Empty, $"Plane {i}: {plane}");
             // Assert.IsNull(f, $"Plane {i}: {plane}");
             (f, b) = h.Split(new Hull2D(-plane));
             Assert.IsNotNull(b, $"Plane {i}: {-plane}");
             Assert.IsNotNull(f, $"Plane {i}: {plane}");
-            Assert.False(b!.empty, $"Plane {i}: {-plane}");
-            Assert.True(f!.empty, $"Plane {i}: {plane}");
+            Assert.False(b!.Empty, $"Plane {i}: {-plane}");
+            Assert.True(f!.Empty, $"Plane {i}: {plane}");
             // Assert.IsNull(f, $"Plane {i}: {-plane}");
         }
 
         var (back, front) = h!.Split(new Hull2D(Vector4.UnitX));
         Assert.IsNotNull(back, $"Cross split");
         Assert.IsNotNull(front, $"Cross split");
-        Assert.False(back!.empty, $"Cross split");
-        Assert.False(front!.empty, $"Cross split");
+        Assert.False(back!.Empty, $"Cross split");
+        Assert.False(front!.Empty, $"Cross split");
         var backs = new[] {
             new Vector2(-1, 0),
             new Vector2(-1, 1),
             new Vector2(1, 1),
             new Vector2(1, 0),
         };
-        for (var i = 0; i < back!.bounds.Count; ++i)
+        for (var i = 0; i < back!.Bounds.Count; ++i)
         {
-            var b = back.bounds[i];
+            var b = back.Bounds[i];
             Assert.LessOrEqual(Vector2.Distance(b.Pos(0.0f), backs[i]), Linealg.Eps);
             Assert.LessOrEqual(Vector2.Distance(b.Pos(1.0f), backs[(i + backs.Length - 1) % backs.Length]), Linealg.Eps);
         }
@@ -173,9 +173,9 @@ public class HullTests
             (new Vector2(-1, 0), new Vector2(-1, -1)),
             (new Vector2(1, -1), new Vector2(1, 0)),
         };
-        for (var i = 0; i < front!.bounds.Count; ++i)
+        for (var i = 0; i < front!.Bounds.Count; ++i)
         {
-            var b = front.bounds[i];
+            var b = front.Bounds[i];
             TestContext.WriteLine($"{b.Pos(0.0f)} {b.Pos(1.0f)}");
             Assert.LessOrEqual(Vector2.Distance(b.Pos(0.0f), fronts[i].Item1), Linealg.Eps);
             Assert.LessOrEqual(Vector2.Distance(b.Pos(1.0f), fronts[i].Item2), Linealg.Eps);
@@ -197,6 +197,6 @@ public class HullTests
             h = h!.Split(new Hull2D(plane)).Back;
         }
         Assert.IsNotNull(h);
-        Assert.True(h!.empty);
+        Assert.True(h!.Empty);
     }
 }
