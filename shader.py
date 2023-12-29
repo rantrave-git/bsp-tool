@@ -211,30 +211,31 @@ class MaterialHelper:
             n = self.node('ShaderNodeTexNoise', [self.math('ADD', [v, ph]), 1, 5, 1, 0], noise_dimensions='1D').outputs['Fac']
             n = self.math('MULTIPLY_ADD', [n, 2, -1])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
-        if style == 'sin':
+        elif style == 'sin':
             n = self.math('MULTIPLY_ADD', [v, 6.28319, ph * 6.28319])
             n = self.math('SINE', [n])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
-        if style == 'triangle':
+        elif style == 'triangle':
             n = self.math('ADD', [v, ph + 0.25])
             n = self.math('PINGPONG', [n, 0.5])
             n = self.math('MULTIPLY_ADD', [n, 2, -0.5])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
-        if style == 'sawtooth':
+        elif style == 'sawtooth':
             n = self.math('ADD', [v, ph])
             n = self.math('FRACT', [n])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
-        if style == 'inversesawtooth':
+        elif style == 'inversesawtooth':
             n = self.math('ADD', [v, ph])
             n = self.math('FRACT', [n])
             n = self.math('SUBTRACT', [1, n])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
-        if style == 'square':
+        elif style == 'square':
             n = self.math('ADD', [v, ph])
             n = self.math('FRACT', [n])
             n = self.math('GREATER_THAN', [n, 0.5])
             n = self.math('MULTIPLY_ADD', [n, 2, -1])
             n = self.math('MULTIPLY_ADD', [n, a, b], use_clamp=clamp)
+        else: raise NameError("Invalid style")
         return n
     
     def animate(self, speed):
@@ -965,15 +966,15 @@ def run_assign(context):
             o.data.materials.append(m)
         return slot
     mats = {o.name: find_slot(o) for o in context.selected_objects if o.type == 'MESH'}
-    all = context.mode == 'OBJECT'
+    whole = context.mode == 'OBJECT'
     bpy.ops.object.mode_set(mode = 'OBJECT')
     bpy.ops.object.mode_set(mode = 'EDIT')
-    selected = [(y.name, i) for y in context.selected_objects for i,x in enumerate(y.data.polygons) if y.type == 'MESH' and (x.select or all)]
+    selected = [(y.name, i) for y in context.selected_objects for i,x in enumerate(y.data.polygons) if y.type == 'MESH' and (x.select or whole)]
     bpy.ops.object.mode_set(mode = 'OBJECT')
     for n, i in selected:
         bpy.data.objects[n].data.polygons[i].material_index = mats[n]
     bpy.ops.object.mode_set(mode = 'EDIT')
-    if all:
+    if whole:
         bpy.ops.object.mode_set(mode = 'OBJECT')
 
 class BSP_OP_TextureAssignMaterial(bpy.types.Operator):
@@ -1710,7 +1711,8 @@ class BSP_OP_ValidateShader(bpy.types.Operator):
         try:
             shader = ShaderEditor.parse(text)
         except ValueError as e:
-            errors.append(str(e))
+            self.report({'ERROR'}, str(e))
+            return {'FINISHED'}
         errors = ShaderEditor.shader_validate(shader, context)
         if len(errors) > 0:
             for e in errors:
@@ -1736,7 +1738,8 @@ class BSP_OP_SaveShader(bpy.types.Operator):
         try:
             shader = ShaderEditor.parse(text)
         except ValueError as e:
-            errors.append(str(e))
+            self.report({'ERROR'}, str(e))
+            return {'FINISHED'}
         errors = ShaderEditor.shader_validate(shader, context)
         if len(errors) > 0:
             for e in errors:

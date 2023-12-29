@@ -3,15 +3,65 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using System.Text;
 using BenchmarkDotNet.Running;
 using Bsp.Common;
+using Bsp.Common.Bsp;
 using Bsp.Common.Geometry;
 
 // var summary = BenchmarkRunner.Run<BasisBenchmark>();
 
-var p = new Vector4(0.0f, 0.0001f, -1.0f, 1.0f).AsVector128().AsVector<float>();
-var eps = -(Vector4.One * 0.01f).AsVector128().AsVector<float>();
-Console.WriteLine(Vector.LessThanAny(p, eps));
+var s = "a";
+for (int i = 0; i < 10; ++i)
+{
+    s += s;
+}
+Console.WriteLine(s.Length);
+var a = new Advertisement(s);
+
+var bytes = new byte[Marshal.SizeOf<Advertisement>()];
+Console.WriteLine(MemoryMarshal.TryWrite(bytes, ref a));
+
+for (int i = 0; i < bytes.Length; ++i)
+{
+    Console.Write($"{bytes[i]} ");
+}
+Console.WriteLine();
+
+var p = new Vector4(1.0f, 2.0f, 3.0f, 4.0f).AsVector128();
+
+var pp = p.AsInt32();
+var ppp = p.AsInt32();
+Console.WriteLine(pp);
+Console.WriteLine(pp == ppp);
+
+Dictionary<Vector128<int>, Vector4> d = new();
+d[pp] = p.AsVector4();
+Console.WriteLine(d[ppp]);
+
+
+Span<float> v0 = stackalloc float[] {
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+};
+var vv0 = new Vector<float>(v0);
+v0[2..5].Fill(2.0f);
+var vv1 = new Vector<float>(v0);
+Console.WriteLine(vv0 + vv1);
 
 // var p = new Vector4(1.0f, 1.0f, 1.0f, -3.0f);
 // var v0 = new Vector3(3.0f, 0.0f, 0.0f);

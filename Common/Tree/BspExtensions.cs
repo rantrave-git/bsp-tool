@@ -1,69 +1,15 @@
-global using BspNode1D = Bsp.Common.Tree.BspNode<Bsp.Common.Tree.Hull0D, long>;
-global using BspNode2D = Bsp.Common.Tree.BspNode<Bsp.Common.Tree.Hull1D, long>;
-global using BspNode3D = Bsp.Common.Tree.BspNode<Bsp.Common.Tree.Hull2D, long>;
-global using BspTree1D = Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull1D, Bsp.Common.Tree.Hull0D, long>;
-global using BspTree2D = Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull2D, Bsp.Common.Tree.Hull1D, long>;
-global using BspTree3D = Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull3D, Bsp.Common.Tree.Hull2D, long>;
-// global using BspNode2D = Bsp.Common.Tree.BspNode<Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull1D, System.Numerics.Vector2, Bsp.Common.Tree.BspTree0D, float, long>, long>;
-// global using BspNode3D = Bsp.Common.Tree.BspNode<Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull2D, System.Numerics.Vector3, Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull1D, System.Numerics.Vector2, Bsp.Common.Tree.BspTree0D, float, long>, System.Numerics.Vector2, long>, long>;
-
-global using BspOperationsHelper1D = Bsp.Common.Tree.BspOperationsHelper<Bsp.Common.Tree.Hull0D, long>;
-global using BspOperationsHelper2D = Bsp.Common.Tree.BspOperationsHelper<Bsp.Common.Tree.Hull1D, long>;
-global using BspOperationsHelper3D = Bsp.Common.Tree.BspOperationsHelper<Bsp.Common.Tree.Hull2D, long>;
-// global using BspOperationsHelper3D = Bsp.Common.Tree.BspOperationsHelper<Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull2D, System.Numerics.Vector3, Bsp.Common.Tree.BspTree<Bsp.Common.Tree.Hull1D, System.Numerics.Vector2, Bsp.Common.Tree.BspTree0D, float, long>, System.Numerics.Vector2, long>, long>;
-
 using System.Numerics;
 using Bsp.Common.Geometry;
 using System.Runtime.Intrinsics;
 
 namespace Bsp.Common.Tree;
 
+
+
 public static class BspExtensions
 {
-    public static BspTree1D CreateBspTree(this Hull1D plane, long flags)
-    {
-        if (flags == 0) return new BspTree1D(BspOperationsHelper1D.MakeLeaf(flags), plane);
-        return new BspTree1D(
-            BspOperationsHelper1D.MakeNode(
-                new BspTree0D<long>(new Vector2(-1.0f, -plane.min)),
-                BspOperationsHelper1D.MakeNode(
-                    new BspTree0D<long>(new Vector2(1.0f, plane.max)),
-                    BspOperationsHelper1D.MakeLeaf(flags),
-                    BspOperationsHelper1D.MakeLeaf(0)
-                ),
-                BspOperationsHelper1D.MakeLeaf(0)
-            ), plane
-        );
-    }
-    public static BspTree1D CreateBspTree1D(this Hull1D plane, long flags) =>
-        new BspTree1D(BspOperationsHelper1D.MakeLeaf(flags), plane);
-    public static Vector2 MakePoint(float x) => new Vector2(x, -1);
+    public static Vector2 MakePoint(float x) => new(x, -1);
 
-    public static BspTree2D CreateBspTree(this Hull2D plane, long flags)
-    {
-        if (flags == 0) return new BspTree2D(BspOperationsHelper2D.MakeLeaf(flags), plane);
-        // var root = BspOperationsHelper2D.MakeNode()
-        var hulls = plane.Bounds.Select(x => x.Coplanar()).ToArray();
-        for (int i = 0; i < hulls.Length; ++i)
-        {
-            var hi = hulls[i];
-            if (hi == null || hi.Empty) continue;
-            for (int j = i + 1; j < hulls.Length; ++j)
-            {
-                var hj = hulls[j];
-                if (hj == null || hj.Empty) continue;
-                (hj, _) = hj!.Split(hi);
-                hulls[j] = hj;
-            }
-        }
-        var root = BspOperationsHelper2D.MakeLeaf(flags);
-        for (int i = hulls.Length; i-- > 0;)
-        {
-            if (hulls[i] == null || hulls[i].Empty) continue;
-            root = BspOperationsHelper2D.MakeNode(hulls[i].CreateBspTree(1), root, BspOperationsHelper2D.MakeLeaf(0));
-        }
-        return new BspTree2D(root, plane.Coplanar(new List<Hull1D>(), false));
-    }
     public static Hull2D CreateHull(this Vector4 plane, IList<Vector3> points)
     {
         var hull = new Hull2D(plane);
@@ -76,27 +22,106 @@ public static class BspExtensions
         }
         return hull;
     }
-    public static List<Vector3> Rect(this Matrix4x4 transform, float halfwidth, float halfheight) => new List<Vector3>() {
+    private static BspNode<Hull1D, TContent> BuildSplit<TContent>(Hull1D edge, IContentProvider<TContent> edgeContent, TContent back, TContent front)
+    {
+        return BspOperationsHelper<Hull1D, TContent>.MakeNode(
+            edge.BuildTree(edgeContent),
+            BspOperationsHelper<Hull1D, TContent>.MakeLeaf(back),
+            BspOperationsHelper<Hull1D, TContent>.MakeLeaf(front)
+        );
+    }
+    public static PortalGraph<Hull2D, Hull1D, VisibilityContent>? ToBsp(this Face face, ISpaceContentOperation<VisibilityContent> operation, IAreaBuilder<VisibilityContent> areaBuilder)
+    {
+        Span<Vector3> points = stackalloc Vector3[face.Indices.Length];
+        var innerContent = new VisibilityContent(face.Flags, VisibilityFlags.BackToFront);
+        var outerContent = new VisibilityContent(0, VisibilityFlags.Open);
+
+        // var hull = new Hull2D(face.Normal.Plane(points[0]));
+        for (int i = 0; i < face.Indices.Length; ++i)
+        {
+            points[i] = face.Mesh.Vertices[face.Indices[i]].Pos;
+        }
+        var normal = face.Normal;
+        if (normal.LengthSquared() < Linealg.EpsSquared) return null;
+        var hull = Hull2D.ConvexHull(face.Normal.Plane(points[0]), points);
+        var root = new BspTree<Hull2D, Hull1D, VisibilityContent>(
+            BspOperationsHelper<Hull1D, VisibilityContent>.MakeLeaf(outerContent), hull);
+        for (int i = 0; i < points.Length; ++i)
+        {
+            var v0 = points[i];
+            var v1 = points[(i + 1) % points.Length];
+            var locp = hull.Local.Plane2D(v0, v1, out var t0, out var t1);
+            var loch = new Hull1D(locp, t0, t1);
+            root.Add(loch.BuildTree(
+                new SolidContent(
+                    new VisibilityContent() { Flags = 1, Visibility = VisibilityFlags.BackToFront })),
+                operation.EdgeOperation);
+        }
+        var gr = PortalGraph<Hull2D, Hull1D, VisibilityContent>.Build(root, areaBuilder);
+        gr.BuildParity(true, innerContent, outerContent);
+        return gr;
+    }
+
+    public static PortalGraph<Hull3D, Hull2D, VisibilityContent> ToBsp(this Mesh mesh, ISpaceContentOperation<VisibilityContent> operation, IAreaBuilder<VisibilityContent> edgeAreaBuilder, IAreaBuilder<VisibilityContent> areaBuilder)
+    {
+        var innerContent = new VisibilityContent(mesh.Content, VisibilityFlags.BackToFront);
+        var outerContent = new VisibilityContent(0, VisibilityFlags.Open);
+        var hull = Hull3D.Coplanar(new(), false);
+        var root = new BspTree<Hull3D, Hull2D, VisibilityContent>(
+            BspOperationsHelper<Hull2D, VisibilityContent>.MakeLeaf(outerContent), hull
+        );
+        for (int i = 0; i < mesh.Faces.Count; ++i)
+        {
+            var face = mesh.Faces[i];
+            Console.WriteLine($"{i * 1.0 / mesh.Faces.Count}");
+            var bsp = face.ToBsp(operation.EdgeOperation, edgeAreaBuilder);
+            if (bsp == null) continue;
+            root.Add(bsp.Tree, operation.EdgeOperation);
+        }
+        var v = 0;
+        var d = root.Visit(x => v += 1);
+        Console.WriteLine($"Depth: {d}, Nodes: {v}");
+
+        Console.WriteLine($"Building graph");
+
+        var gr = PortalGraph<Hull3D, Hull2D, VisibilityContent>.Build(root, areaBuilder);
+        Console.WriteLine($"Building pairity");
+        gr.BuildParity(true, innerContent, outerContent);
+        return gr;
+    }
+    public static Mesh ToMesh(this PortalGraph<Hull3D, Hull2D, VisibilityContent> graph, int leaf)
+    {
+        var points = new List<Vector3>();
+        var faces = new List<(int[] Indices, long Flags)>();
+        foreach (var edge in graph.LeafEdges[leaf])
+        {
+            // if (edge.Empty) continue;
+            var start = points.Count;
+            edge.Bounds!.Points(points);
+            faces.Add((Enumerable.Range(start, points.Count - start).ToArray(), (int)edge.Flags.Flags));
+        }
+        return new Mesh(points, faces, graph.Leafs[leaf].flags.Flags);
+    }
+    public static List<Vector3> Rect(this Matrix4x4 transform, float halfwidth, float halfheight) => new() {
         Vector3.Transform(new Vector3(halfwidth, halfheight, 0.0f), transform),
         Vector3.Transform(new Vector3(-halfwidth, halfheight, 0.0f), transform),
         Vector3.Transform(new Vector3(-halfwidth, -halfheight, 0.0f), transform),
         Vector3.Transform(new Vector3(halfwidth, -halfheight, 0.0f), transform),
     };
 
-    public static BspNode1D Search<TContent>(this IBspTree<Hull1D, TContent> tree, float x)
+    public static BspNode<Hull0D, TContent> Search<TContent>(this IBspTree<Hull1D, TContent> tree, float x)
     {
-        if (tree is BspTree1D t) return t.Search(x.AsVector());
+        if (tree is BspTree<Hull1D, Hull0D, TContent> t) return t.Search(x.AsVector());
         throw new ArgumentException("Wrong dimension", nameof(tree));
     }
-    public static BspNode2D Search<TContent>(this IBspTree<Hull2D, TContent> tree, Vector2 x)
+    public static BspNode<Hull1D, TContent> Search<TContent>(this IBspTree<Hull2D, TContent> tree, Vector2 x)
     {
-        if (tree is BspTree2D t) return t.Search(x.AsVector128().AsVector());
+        if (tree is BspTree<Hull2D, Hull1D, TContent> t) return t.Search(x.AsVector128().AsVector());
         throw new ArgumentException("Wrong dimension", nameof(tree));
     }
-    public static BspNode3D Search<TContent>(this IBspTree<Hull3D, TContent> tree, Vector3 x)
+    public static BspNode<Hull2D, TContent> Search<TContent>(this IBspTree<Hull3D, TContent> tree, Vector3 x)
     {
-        if (tree is BspTree3D t) return t.Search(x.AsVector128().AsVector());
+        if (tree is BspTree<Hull3D, Hull2D, TContent> t) return t.Search(x.AsVector128().AsVector());
         throw new ArgumentException("Wrong dimension", nameof(tree));
     }
-    // public static BspTree3D CreateBspTree(this Mesh mesh)
 }

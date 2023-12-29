@@ -11,6 +11,8 @@ using Newtonsoft.Json;
 
 namespace Bsp.Tests;
 
+using VxList = System.Collections.Generic.List<Vector3>;
+
 public class HullTests
 {
     [SetUp]
@@ -30,7 +32,25 @@ public class HullTests
             Z = src.Z;
         }
         [JsonIgnore]
-        public Vector3 Vector => new Vector3(X, Y, Z);
+        public Vector3 Vector => new(X, Y, Z);
+    }
+    [Test]
+    public void ProjectionsTest()
+    {
+        var p0 = new Vector3(1, 0, 0);
+        var p1 = new Vector3(-1, 0, 0);
+        var p2 = new Vector3(0, 1, 0);
+        var p3 = new Vector3(0, -1, 0);
+
+        var h0 = new Hull1D(p0);
+        var h1 = new Hull1D(p1);
+        var h2 = new Hull1D(p2);
+        var h3 = new Hull1D(p3);
+
+        var pp01 = h0.Local.Project(h1.Local.Plane);
+        var pp10 = h1.Local.Project(h0.Local.Plane);
+        var pp02 = h0.Local.Project(h2.Local.Plane);
+        var pp20 = h2.Local.Project(h0.Local.Plane);
     }
     // [Test]
     // public void RunFailedTest()
@@ -99,7 +119,7 @@ public class HullTests
         {
             var sss = new
             {
-                num = num,
+                num,
                 p = p.Select(x => new Vector3S(x))
             };
             var path = Path.GetFullPath($"./failed-{Guid.NewGuid()}.test");
@@ -198,5 +218,50 @@ public class HullTests
         }
         Assert.IsNotNull(h);
         Assert.True(h!.Empty);
+    }
+    [Test]
+    public void TestConvexHullEdgeCases()
+    {
+        var p = new Vector3(1, 2, 3).Plane(4);
+        var hull = Hull2D.ConvexHull(p, new VxList() { new(1, 1, 1) });
+        Assert.True(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(1, 1, 1), new(1, 2, 3) });
+        Assert.True(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(1, 1, 1), new(2, 2, 2), new(3, 3, 3) });
+        Assert.True(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(1, 1, 1), new(2, 2, 2), new(3, 3, 3), new(1, 1, 1) });
+        Assert.True(hull.Empty);
+        p = new Vector3(0, 0, 1).Plane(2);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(0, 0, 0), new(0, 1, 0), new(1, 0, 0) });
+        Assert.False(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(0, 0, 0), new(1, 0, 0), new(0, 1, 0) });
+        Assert.False(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(0, 0, 0), new(1, 0, 0), new(1, 0, 1) });
+        Assert.True(hull.Empty);
+        hull = Hull2D.ConvexHull(p, new VxList() { new(0, 0, 0), new(1, 1, 0), new(1, 1, 1) });
+        Assert.True(hull.Empty);
+    }
+    [Test]
+    public void TestConvexHull()
+    {
+        var rnd = TestContext.CurrentContext.Random;
+        var numempty = 0;
+        for (int i = 0; i < 5000; ++i)
+        {
+            var p = (rnd.NextVector3() + Vector3.UnitZ).Plane(rnd.NextFloat());
+            var n = rnd.Next(1000);
+            var pts = Enumerable.Range(0, n).Select(_ => rnd.NextVector3()).ToList();
+            var avg = pts.Aggregate(Vector3.Zero, (s, v) => s + v) / n;
+            var hull = Hull2D.ConvexHull(p, pts);
+            if (!hull.Empty)
+            {
+                Assert.True(hull.Classify(avg) == Side.Back);
+            }
+            else
+            {
+                numempty++;
+            }
+        }
+        TestContext.WriteLine($"Empty hulls: {numempty}");
     }
 }

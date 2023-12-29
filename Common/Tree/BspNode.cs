@@ -5,15 +5,15 @@ using Bsp.Common.Geometry;
 namespace Bsp.Common.Tree;
 
 
-public class BspNode<THull, TContent> where THull : class, IHull<THull>
+public class BspNode<TEdgeHull, TContent> where TEdgeHull : class, IHull<TEdgeHull>
 {
-    public long numeration = -1;
+    public int numeration = -1;
     public TContent flags = default!;
-    public BspNode<THull, TContent>? back;
-    public BspNode<THull, TContent>? front;
-    public IBspTree<THull, TContent>? edge;
+    public BspNode<TEdgeHull, TContent>? back;
+    public BspNode<TEdgeHull, TContent>? front;
+    public IBspTree<TEdgeHull, TContent>? edge;
     private BspNode() { }
-    public BspNode(IBspTree<THull, TContent> plane)
+    public BspNode(IBspTree<TEdgeHull, TContent> plane)
     {
         this.edge = plane;
     }
@@ -31,23 +31,33 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
         back?.ApplyRight(operation, rhs);
         front?.ApplyRight(operation, rhs);
     }
-    public void ApplyLeft(IContentOperation<TContent> operation, TContent lhs)
+    public void Apply(IContentOperation<TContent> operation, TContent lhs)
     {
         if (edge == null)
         {
             flags = operation.Apply(lhs, flags);
             return;
         }
-        back?.ApplyLeft(operation, lhs);
-        front?.ApplyLeft(operation, lhs);
+        back?.Apply(operation, lhs);
+        front?.Apply(operation, lhs);
     }
-    public BspNode<THull, TContent> Copy() => new BspNode<THull, TContent>()
+    public void Invert(IContentOperation<TContent> operation)
+    {
+        if (edge == null)
+        {
+            flags = operation.Invert(flags);
+            return;
+        }
+        back?.Invert(operation);
+        front?.Invert(operation);
+    }
+    public BspNode<TEdgeHull, TContent> Copy() => new()
     {
         edge = edge == null ? default : edge.Copy(),
         flags = flags,
         numeration = numeration,
     };
-    public BspNode<THull, TContent> DeepCopy() => new BspNode<THull, TContent>()
+    public BspNode<TEdgeHull, TContent> DeepCopy() => new()
     {
         edge = edge == null ? default : edge.Copy(),
         flags = flags,
@@ -55,8 +65,16 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
         back = back?.DeepCopy(),
         front = front?.DeepCopy(),
     };
+    public BspNode<TEdgeHull, TContent> DeepCopy(ISpaceTransformer<TEdgeHull> transformer) => new()
+    {
+        edge = edge == null ? default : edge.CloneProjected(transformer.Transform(edge.Hull)),
+        flags = flags,
+        numeration = numeration,
+        back = back?.DeepCopy(transformer),
+        front = front?.DeepCopy(transformer),
+    };
     public void Detach() => front = back = null;
-    public BspNode<THull, TContent>? GetChild(Side side)
+    public BspNode<TEdgeHull, TContent>? GetChild(Side side)
     {
         if (side == Side.Incident)
         {
@@ -71,14 +89,14 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
         back = front = null;
         edge = default;
     }
-    public void SetNode(BspNode<THull, TContent> back, BspNode<THull, TContent> front, IBspTree<THull, TContent> edge)
+    public void SetNode(BspNode<TEdgeHull, TContent> back, BspNode<TEdgeHull, TContent> front, IBspTree<TEdgeHull, TContent> edge)
     {
         this.back = back;
         this.front = front;
         this.edge = edge;
         this.flags = default!;
     }
-    public BspNode<THull, TContent> SetChild(Side side, BspNode<THull, TContent> node)
+    public BspNode<TEdgeHull, TContent> SetChild(Side side, BspNode<TEdgeHull, TContent> node)
     {
         if (side == Side.Incident)
         {
@@ -92,7 +110,7 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
         if (side == Side.Back) return back = node;
         return front = node;
     }
-    public void SetChildren(BspNode<THull, TContent> back, BspNode<THull, TContent> front)
+    public void SetChildren(BspNode<TEdgeHull, TContent> back, BspNode<TEdgeHull, TContent> front)
     {
         this.back = back;
         this.front = front;
@@ -100,7 +118,7 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
 
     public override string ToString() => edge == null ? $"{numeration} [{flags}]" : $"{numeration} {edge}";
 
-    public BspNode<THull, TContent> Search(Vector<float> point)
+    public BspNode<TEdgeHull, TContent> Search(Vector<float> point)
     {
         var c = this;
         while (c.edge != null)
@@ -110,21 +128,26 @@ public class BspNode<THull, TContent> where THull : class, IHull<THull>
         }
         return c;
     }
-    public (BspNode<THull, TContent>? Back, BspNode<THull, TContent>? Front) Split(BspNode<THull, TContent> splitter, ISpaceContentOperation<TContent> operation, out bool flip)
+    public (BspNode<TEdgeHull, TContent>? Back, BspNode<TEdgeHull, TContent>? Front) Split(BspNode<TEdgeHull, TContent> splitter, ISpaceContentOperation<TContent> operation, out bool flip)
     {
         // var splitterLocal = splitter.edge!.Hull.local;
         // var nodeLocal = this.edge!.Hull.local;
         flip = splitter.edge!.Hull.IsFlip(edge!.Hull);
-        var (b, f) = this.edge!.Hull.Split(splitter.edge!.Hull);
+        var (b, f) = edge!.Hull.Split(splitter.edge!.Hull);
         if (b == null || b.Empty) return (null, this);
         if (f == null || f.Empty) return (this, null);
         if (b == f) // coincide
         {
-            if (edge!.Hull.HasSpace) edge!.Csg(splitter.edge!, flip ? operation.Inverse : operation, true);
+            if (edge!.Hull.HasSpace)
+            {
+                var t = edge!.Csg(splitter.edge!, operation, false);
+                splitter.edge!.Csg(edge!, operation.Reverse, true);
+                edge = t;
+            }
             return (this, this);
         }
-        var backNode = this.Copy();
-        backNode.edge = this.edge.Separate(f, b);
+        var backNode = Copy();
+        backNode.edge = edge.Separate(f, b);
         return (backNode, this);
     }
     // public string Info() => edge == null ? $"{numeration}: [{flags}]" : $"{numeration}: {edge}";

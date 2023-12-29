@@ -7,12 +7,15 @@
             // For further information visit https://github.com/OmniSharp/omnisharp-vscode/blob/master/debugger-launchjson.md
             "name": ".NET Core Launch (console)",
             "type": "coreclr",
+            "env":{
+                "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE": "false"
+            },
             "request": "launch",
             "preLaunchTask": "build",
             // If you have changed target frameworks, make sure to update the program path.
-            "program": "${workspaceFolder}/bsp-server/bin/Debug/net6.0/bsp-server.dll",
+            "program": "${workspaceFolder}/Server/bin/Debug/net7.0/Bsp.Server.dll",
             "args": [],
-            "cwd": "${workspaceFolder}/bsp-server",
+            "cwd": "${workspaceFolder}/Server",
             // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
             "console": "internalConsole",
             "stopAtEntry": false

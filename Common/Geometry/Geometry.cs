@@ -3,6 +3,53 @@ using System.Runtime.InteropServices;
 
 namespace Bsp.Common.Geometry;
 
+public class AABB
+{
+    public Vector3 Min = new Vector3(float.MaxValue);
+    public Vector3 Max = new Vector3(-float.MaxValue);
+
+    public AABB(Vector3 point)
+    {
+        Max = Min = point;
+    }
+    public AABB(IEnumerable<Vector3> points)
+    {
+        Min = new Vector3(float.MaxValue);
+        Max = new Vector3(-float.MaxValue);
+        foreach (var i in points) FluentAdd(i);
+    }
+    public AABB(IEnumerable<AABB> boxes)
+    {
+        Min = new Vector3(float.MaxValue);
+        Max = new Vector3(-float.MaxValue);
+        foreach (var i in boxes) FluentAdd(i);
+    }
+    public AABB FluentAdd(Vector3 point)
+    {
+        Min = Vector3.Min(Min, point);
+        Max = Vector3.Max(Max, point);
+        return this;
+    }
+    public AABB FluentAdd(AABB box)
+    {
+        Min = Vector3.Min(Min, box.Min);
+        Max = Vector3.Max(Max, box.Max);
+        return this;
+    }
+    public AABB FluentExpand(Vector3 extents)
+    {
+        Min -= extents;
+        Max += extents;
+        return this;
+    }
+    public AABB FluentIntersect(AABB box)
+    {
+        Min = Vector3.Max(Min, box.Min);
+        Max = Vector3.Min(Max, box.Max);
+        return this;
+    }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 public struct VertexData
 {
@@ -20,39 +67,42 @@ public struct CornerData
 [StructLayout(LayoutKind.Sequential)]
 public struct FaceData
 {
+    public long Flags;
     public int LoopStart;
     public int LoopTotal;
-    public int Flags;
     public int Material;
+    public int _pad;
 }
 public class MeshContext
 {
     public VertexData[] Vertices;
     public CornerData[] Corners;
     public FaceData[] Faces;
-    public MeshContext(VertexData[] vertices, CornerData[] corners, FaceData[] faces)
+    public long Content;
+    public MeshContext(VertexData[] vertices, CornerData[] corners, FaceData[] faces, long content)
     {
         Vertices = vertices;
         Corners = corners;
         Faces = faces;
+        Content = content;
     }
 }
 
 
 public class Vertex
 {
-    private Mesh _mesh;
+    public Mesh Mesh { get; }
 
     public Vector3 Pos { get; init; }
     public Vector4 Uvs { get; init; }
     public Vector4 Color { get; init; }
-    public Vertex(Mesh mesh) => _mesh = mesh;
+    public Vertex(Mesh mesh) => Mesh = mesh;
 }
 public class Face
 {
-    private Mesh _mesh;
+    public Mesh Mesh { get; }
     public int[] Indices { get; init; }
-    public int Flags { get; init; }
+    public long Flags { get; init; }
     public int Material { get; init; }
     public Vector3 Normal { get; private set; }
     public static Vector3 CalculateNormal(Mesh mesh, int[] indices)
@@ -64,26 +114,52 @@ public class Face
             var v0 = mesh.Vertices[indices[(i + 1) % s]].Pos - mesh.Vertices[indices[i]].Pos;
             var v1 = mesh.Vertices[indices[(i + 2) % s]].Pos - mesh.Vertices[indices[i]].Pos;
 
-            sum += Vector3.Cross(v0, v1);
+            var v = Vector3.Cross(v0, v1);
+            var nrm = v.Length();
+            if (nrm < Linealg.Eps) continue;
+            sum += v / nrm;
         }
-
+        var len = sum.Length();
+        if (len < Linealg.Eps) return Vector3.Zero;
         return Vector3.Normalize(sum);
     }
     public Face(Mesh mesh, int[] indices)
     {
-        _mesh = mesh;
+        Mesh = mesh;
         Indices = indices;
         Normal = Face.CalculateNormal(mesh, indices);
     }
-    public void UpdateNormal() => Normal = Face.CalculateNormal(_mesh, Indices);
+    public void UpdateNormal() => Normal = Face.CalculateNormal(Mesh, Indices);
 }
 public class Mesh
 {
-    public List<Vertex> Vertices { get; private set; }
-    public List<Face> Faces { get; private set; }
-    private SortedSet<int> _removedVertices = new SortedSet<int>();
-    private SortedSet<int> _removedFaces = new SortedSet<int>();
+    public List<Vertex> Vertices { get; private set; } = default!;
+    public List<Face> Faces { get; private set; } = default!;
+    public long Content { get; set; } = 0;
+    // private SortedSet<int> _removedVertices = new();
+    private readonly SortedSet<int> _removedFaces = new();
     private Mesh() { }
+    public Mesh(IList<Vector3> points, IList<(int[] Indices, long Flags)> faces, long content)
+    {
+        Vertices = new();
+        Faces = new();
+        foreach (var p in points)
+        {
+            Vertices.Add(new Vertex(this)
+            {
+                Pos = p
+            });
+        }
+        foreach (var (Indices, Flags) in faces)
+        {
+            Faces.Add(new Face(this, Indices)
+            {
+                Flags = Flags,
+                Material = 0,
+            });
+        }
+        Content = content;
+    }
     public int AddFace(Face face)
     {
         Faces.Add(face);
@@ -114,7 +190,7 @@ public class Mesh
         {
             if (myFaces[i] == -1)
             {
-                myFaces[i] = myFaces[myFaces.Count - shift];
+                myFaces[i] = myFaces[^shift];
                 shift++;
             }
         }
@@ -133,11 +209,17 @@ public class Mesh
             Flags = x.Flags,
             Material = x.Material
         }).ToList();
+        foreach (var face in m.Faces)
+        {
+            face.UpdateNormal();
+        }
         return m;
     }
+
     public MeshContext ToContext(float cellSize = 1e-4f)
     {
-        Dictionary<(long, long, long), List<int>> grid = new Dictionary<(long, long, long), List<int>>();
+        Console.WriteLine("BIMBO!!!!!");
+        var grid = new Dictionary<(long, long, long), List<int>>();
         for (int i = 0; i < Vertices.Count; ++i)
         {
             var noise = new Vector3(Random.Shared.NextSingle(), Random.Shared.NextSingle(), Random.Shared.NextSingle());
@@ -152,7 +234,7 @@ public class Mesh
                 grid[vv] = new List<int>() { i };
             }
         }
-        Dictionary<int, int> remap = new Dictionary<int, int>();
+        var remap = new Dictionary<int, int>();
         foreach (var i in grid)
         {
             var v = i.Value.FirstOrDefault();
@@ -161,7 +243,19 @@ public class Mesh
                 remap[j] = v;
             }
         }
-        var vertices = remap.Select(x => new VertexData() { Pos = Vertices[x.Value].Pos, Flags = 0 }).ToArray();
+        var vertices = new List<VertexData>();
+        var reremap = new Dictionary<int, int>();
+        foreach (var v in remap)
+        {
+            if (reremap.ContainsKey(v.Value))
+                continue;
+            reremap[v.Value] = vertices.Count;
+            vertices.Add(new VertexData()
+            {
+                Pos = Vertices[v.Value].Pos,
+                Flags = 0
+            });
+        }
         var faces = new FaceData[Faces.Count];
         var corners = new List<CornerData>();
         for (int i = 0; i < Faces.Count; ++i)
@@ -173,7 +267,7 @@ public class Mesh
                 Color = Vertices[x].Color,
                 Uv0 = new Vector2(Vertices[x].Uvs.X, Vertices[x].Uvs.Y),
                 Uv1 = new Vector2(Vertices[x].Uvs.Z, Vertices[x].Uvs.W),
-                Vertex = remap[x]
+                Vertex = reremap[remap[x]]
             }));
             faces[i] = new FaceData()
             {
@@ -183,6 +277,6 @@ public class Mesh
                 Material = f.Material,
             };
         }
-        return new MeshContext(vertices, corners.ToArray(), faces);
+        return new MeshContext(vertices.ToArray(), corners.ToArray(), faces, Content);
     }
 }

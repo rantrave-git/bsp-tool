@@ -1,3 +1,18 @@
 {
-  "window.zoomLevel": 0
+  "window.zoomLevel": 0,
+  "omnisharp.sdkPath": "/home/rantrave/.dotnet/sdk/7.0.302/",
+  "omnisharp.dotNetCliPaths": [
+    "/home/rantrave/.dotnet/dotnet"
+  ],
+  "omnisharp.enableRoslynAnalyzers": true,
+  "dotnetAcquisitionExtension.enableTelemetry": false,
+  "dotnetAcquisitionExtension.existingDotnetPath": [
+    "/home/rantrave/.dotnet/dotnet"
+  ],
+  "dotnet.defaultSolution": "Bsp.sln",
+  "dotnet.dotnetPath": "/home/rantrave/.dotnet",
+  "dotnet.server.useOmnisharp": false,
+  "omnisharp.sdkVersion": "7.0.302",
+  "omnisharp.useModernNet": true,
+  "csharp.suppressDotnetRestoreNotification": false,
 }

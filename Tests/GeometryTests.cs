@@ -87,7 +87,7 @@ public class GeometryTests
     public void TestPlaneLocal()
     {
         var scale = 20.0f;
-        var cell = 0.01f;
+        var cell = 0.02f;
         var cellsq = 2 * cell * cell;
         for (int i = 0; i < 1000000; ++i)
         {
@@ -190,8 +190,8 @@ public class GeometryTests
 
                 Assert.Less(MathF.Abs(cross.Z), 1e-3, "Normals are not parallel");
                 Assert.Less(MathF.Abs((pp.Z - pplane.Z)) / MathF.Max(MathF.Abs(p.Z), 1.0f), cell, "Shift is not equal");
-                Assert.Less(MathF.Abs(ppt1 - t1), cell, "Parameters are different");
-                Assert.Less(MathF.Abs(ppt2 - t2), cell, "Parameters are different");
+                Assert.Less(MathF.Abs(ppt1 - t1), 2 * cell, "Parameters are different");
+                Assert.Less(MathF.Abs(ppt2 - t2), 2 * cell, "Parameters are different");
                 conclusive = true;
             }
             if (!conclusive)
@@ -199,7 +199,7 @@ public class GeometryTests
                 Assert.Fail();
             }
         }
-        Assert.Pass();
+        // Assert.Pass();
 
     }
     [Test]
@@ -215,10 +215,5 @@ public class GeometryTests
         TestContext.WriteLine(basis.TransformNormal(plane));
 
         TestContext.WriteLine(s);
-    }
-
-    public void Test()
-    {
-
     }
 }

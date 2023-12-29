@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/bsp-server/bsp-server.csproj",
+                "${workspaceFolder}/Bsp.sln",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/bsp-server/bsp-server.csproj",
+                "${workspaceFolder}/Server/Bsp.Server.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -27,13 +27,18 @@
         },
         {
             "label": "watch",
+            "options": {
+                "env": {
+                    "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE": "false"
+                }
+            },
             "command": "dotnet",
             "type": "process",
             "args": [
                 "watch",
                 "run",
                 "--project",
-                "${workspaceFolder}/bsp-server/bsp-server.csproj"
+                "${workspaceFolder}/Server/Bsp.Server.csproj"
             ],
             "problemMatcher": "$msCompile"
         }

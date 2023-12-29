@@ -1,25 +1,59 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
-using System.Runtime.InteropServices;
-using System.Text;
+using BenchmarkDotNet.Loggers;
 using Bsp.Common.Geometry;
+using Bsp.Server.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Bsp.Server;
-
-public interface ICommandController
+public interface IMeshBsp
 {
-    Task StartAsync(int port, CancellationToken cancellationToken = default);
+    Mesh[] ConvexSplit(Mesh sourceMesh);
 }
+
 
 public class CommandController : ICommandController
 {
-    enum Command : Int32
+    public enum Status : int
     {
-        TestEcho = 0x0,
-        EchoMesh = 0x1
+        Success = 0,
+        FailedRequest = 0x1,
+        FailedProcess = 0x2,
+        InternalError = 0x10,
+        Timeout = 0x20,
+        Progress = 0x10000000,
     }
+    private class ProgressHandler : IProgressHandler
+    {
+        private readonly Stream _stream;
+
+        public ProgressHandler(Stream stream)
+        {
+            _stream = stream;
+        }
+        public async ValueTask OnProgress(int done, int all)
+        {
+            _stream.Write((int)Status.Progress);
+            _stream.Write(done);
+            _stream.Write(all);
+            await Task.Yield();
+        }
+    }
+
     private TcpListener? _listener;
+    private readonly ILogger<CommandController> _logger;
+    private readonly Dictionary<int, ICommandHandler> _handlers;
+
+    public CommandController(IServiceProvider serviceProvider, ILogger<CommandController> logger, ICommandHandlerProvider commandHandlerProvider)
+    {
+        _logger = logger;
+        _handlers = commandHandlerProvider.GetHandlers(serviceProvider);
+    }
+    public static void Success(Stream stream)
+    {
+        stream.Write((int)Status.Success);
+    }
     public async Task StartAsync(int port, CancellationToken cancellationToken = default)
     {
         IPAddress localhost = IPAddress.Loopback;
@@ -47,115 +81,76 @@ public class CommandController : ICommandController
             Console.WriteLine($"Listening on {port} done!");
         }
     }
-    private async Task<bool> TryRead(Stream stream, byte[] dst, int offset, int length)
-    {
-        int pos = 0;
-        while (pos < length)
-        {
-
-            var len = await stream.ReadAsync(dst, offset + pos, length - pos);
-            if (len == 0) { return false; }
-            pos += len;
-        }
-        return true;
-    }
-    private async Task<T[]?> TryReadArray<T>(Stream stream) where T : struct
-    {
-        byte[] lenBytes = ArrayPool<byte>.Shared.Rent(sizeof(Int32));
-        int len = 0;
-        try
-        {
-            if (!await TryRead(stream, lenBytes, 0, sizeof(Int32))) return null;
-            len = BitConverter.ToInt32(lenBytes.AsSpan(0, sizeof(Int32)));
-            if (len == 0) return Array.Empty<T>();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(lenBytes);
-        }
-        var byteLen = Marshal.SizeOf<T>() * len;
-        byte[] bytes = ArrayPool<byte>.Shared.Rent(byteLen);
-        try
-        {
-            if (!await TryRead(stream, bytes, 0, byteLen)) return null;
-            var dst = new T[len];
-            bytes.AsSpan(0, byteLen).CopyTo(MemoryMarshal.Cast<T, byte>(dst));
-            return dst;
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(bytes);
-        }
-    }
-    private async Task<MeshContext?> TryReadMesh(Stream stream)
-    {
-        // read vertices
-        var vertices = await TryReadArray<VertexData>(stream);
-        if (vertices == null) return null;
-        // read corners
-        var corners = await TryReadArray<CornerData>(stream);
-        if (corners == null) return null;
-        // read faces
-        var faces = await TryReadArray<FaceData>(stream);
-        if (faces == null) return null;
-        return new MeshContext(vertices, corners, faces);
-    }
     private async Task Stream(TcpClient client, CancellationToken cancellationToken = default)
     {
         Console.WriteLine($"Client connected {client.Client.RemoteEndPoint}");
         byte[] recvBuffer = ArrayPool<byte>.Shared.Rent(256);
-        var headerLength = sizeof(Int32);
+        var headerLength = sizeof(int);
         try
         {
             var stream = client.GetStream();
+            var progress = new ProgressHandler(stream);
             while (!cancellationToken.IsCancellationRequested)
             {
                 // read header
-                if (!await TryRead(stream, recvBuffer, 0, headerLength)) break;
-                var command = (Command)BitConverter.ToInt32(recvBuffer.AsSpan(0, headerLength));
-                Console.WriteLine($"Received command {command}");
-                switch (command)
+                if (!await stream.TryRead(recvBuffer.AsMemory(0, headerLength), cancellationToken)) break;
+                var command = BitConverter.ToInt32(recvBuffer.AsSpan(0, headerLength));
+                if (_handlers.TryGetValue(command, out var handler))
                 {
-                    default:
-                        break;
-                    case Command.EchoMesh:
-                        // read mesh
-                        var m = await TryReadMesh(stream);
-                        if (m == null) throw new IndexOutOfRangeException("Invalid format");
-                        using (var ms = new MemoryStream())
-                        using (var bw = new BinaryWriter(ms))
+                    _logger.LogDebug("Received command: {command}", command);
+                    // read mesh
+                    ICommandProcessor processor;
+                    using (var cts = new CancellationTokenSource(10000))
+                    {
+                        try
                         {
-                            bw.Write(m.Vertices.Length);
-                            ms.Write(MemoryMarshal.Cast<VertexData, byte>(m.Vertices));
-                            bw.Write(m.Corners.Length);
-                            ms.Write(MemoryMarshal.Cast<CornerData, byte>(m.Corners));
-                            bw.Write(m.Faces.Length);
-                            ms.Write(MemoryMarshal.Cast<FaceData, byte>(m.Faces));
-
-                            ms.Flush();
-                            ms.Position = 0;
-                            var len = 0;
-                            while ((len = ms.Read(recvBuffer, 0, recvBuffer.Length)) != 0)
-                            {
-                                await stream.WriteAsync(recvBuffer, 0, len);
-                            }
+                            processor = await handler.ReceiveAsync(stream, cts.Token);
                         }
-                        break;
-                    case Command.TestEcho:
-                        var s = await TryReadArray<byte>(stream);
-                        if (s != null)
+                        catch (OperationCanceledException)
                         {
-                            Console.WriteLine($"Received {Encoding.UTF8.GetString(s)}");
-                            await stream.WriteAsync(s, 0, s.Length);
+                            stream.Write((int)Status.Timeout);
+                            await stream.WriteMessage($"Failed to complete command [{command}]. Input timed out.");
+                            continue;
                         }
-                        else
+                        catch (CommandHandlerException e)
                         {
-                            Console.WriteLine("$Invalid data received");
+                            stream.Write((int)Status.FailedRequest);
+                            _logger.LogError(e, "Request failed [{command}]", command);
+                            await stream.WriteMessage($"Request failed [{command}]. {e.Message}");
+                            break;
                         }
+                    }
+                    string? success = null;
+                    try
+                    {
+                        _logger.LogInformation("Processing command: {command}", command);
+                        success = await processor.ResponseAsync(stream, progress);
+                        _logger.LogInformation("Done command: {command}", command);
+                    }
+                    catch (Exception e)
+                    {
+                        stream.Write((int)Status.InternalError);
+                        _logger.LogError(e, "Failed [{command}]", command);
+                        await stream.WriteMessage($"Failed [{command}]. {e.Message}");
+                        throw;
+                    }
+                    if (success != null)
+                    {
+                        stream.Write((int)Status.FailedProcess);
+                        _logger.LogError("Process failed [{command}]", command);
+                        await stream.WriteMessage($"Process failed [{command}]. {success}");
                         break;
+                    }
                 }
+                else
+                {
+                    _logger.LogError("Unknown command received: {command}", command);
+                    break;
+                }
+                await Task.Yield();
             }
         }
+        catch (OperationCanceledException) { }
         catch (IndexOutOfRangeException) { }
         catch (Exception e)
         {
