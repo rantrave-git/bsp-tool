@@ -62,9 +62,9 @@ public static class BspExtensions
         return gr;
     }
 
-    public static PortalGraph<Hull3D, Hull2D, VisibilityContent> ToBsp(this Mesh mesh, ISpaceContentOperation<VisibilityContent> operation, IAreaBuilder<VisibilityContent> edgeAreaBuilder, IAreaBuilder<VisibilityContent> areaBuilder)
+    public static PortalGraph<Hull3D, Hull2D, VisibilityContent> ToBsp(this Mesh mesh, long content, ISpaceContentOperation<VisibilityContent> operation, IAreaBuilder<VisibilityContent> edgeAreaBuilder, IAreaBuilder<VisibilityContent> areaBuilder)
     {
-        var innerContent = new VisibilityContent(mesh.Content, VisibilityFlags.BackToFront);
+        var innerContent = new VisibilityContent(content, VisibilityFlags.BackToFront);
         var outerContent = new VisibilityContent(0, VisibilityFlags.Open);
         var hull = Hull3D.Coplanar(new(), false);
         var root = new BspTree<Hull3D, Hull2D, VisibilityContent>(

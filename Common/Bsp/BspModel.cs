@@ -2,6 +2,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Text;
+using Bsp.Common.Geometry;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Bsp.Common.Bsp;
@@ -13,6 +14,63 @@ public struct Vertex
     public Vector2 Uv;
     public Vector2 LightmapUv;
     public int Color;
+}
+[StructLayout(LayoutKind.Sequential, Pack = 1, Size = 64 + sizeof(int) * 2)]
+public unsafe struct Texture
+{
+    public fixed byte Name[64];
+    public int Flags = 0;
+    public int Contents = 0;
+
+    public Texture()
+    {
+        fixed (byte* d = Name)
+        {
+            Span<byte> sp = new(d, 64);
+            sp.Clear();
+        }
+    }
+    public Texture(string name, int flags, int contents)
+    {
+        name ??= "noshader";
+        fixed (byte* d = Name)
+        {
+            Span<byte> sp = new(d, 64);
+            var shift = Encoding.ASCII.GetBytes(name.AsSpan(), sp);
+            sp[shift..].Clear();
+        }
+        Flags = flags;
+        Contents = contents;
+    }
+}
+
+[StructLayout(LayoutKind.Sequential, Pack = 1, Size = 64 + sizeof(int) * 2)]
+public unsafe struct Effect
+{
+    public fixed byte Name[64];
+    public int Brush = 0;
+    public int Unused = -1;
+
+    public Effect()
+    {
+        fixed (byte* d = Name)
+        {
+            Span<byte> sp = new(d, 64);
+            sp.Clear();
+        }
+    }
+    public Effect(string name, int brush, int unused = -1)
+    {
+        name ??= "noshader";
+        fixed (byte* d = Name)
+        {
+            Span<byte> sp = new(d, 64);
+            var shift = Encoding.ASCII.GetBytes(name.AsSpan(), sp);
+            sp[shift..].Clear();
+        }
+        Brush = brush;
+        Unused = unused;
+    }
 }
 public interface ITexture
 {
@@ -47,7 +105,6 @@ public interface IMesh
     List<int> Indices { get; }
 }
 
-public record struct Vector3i(int X, int Y, int Z) { }
 
 public interface IBaseBspNode
 {

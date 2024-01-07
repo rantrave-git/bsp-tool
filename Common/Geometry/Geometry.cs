@@ -1,5 +1,8 @@
+using System.Collections;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using Bsp.Common.Bsp;
+using Bsp.Common.Tree;
 
 namespace Bsp.Common.Geometry;
 
@@ -78,13 +81,11 @@ public class MeshContext
     public VertexData[] Vertices;
     public CornerData[] Corners;
     public FaceData[] Faces;
-    public long Content;
-    public MeshContext(VertexData[] vertices, CornerData[] corners, FaceData[] faces, long content)
+    public MeshContext(VertexData[] vertices, CornerData[] corners, FaceData[] faces)
     {
         Vertices = vertices;
         Corners = corners;
         Faces = faces;
-        Content = content;
     }
 }
 
@@ -131,11 +132,17 @@ public class Face
     }
     public void UpdateNormal() => Normal = Face.CalculateNormal(Mesh, Indices);
 }
-public class Mesh
+public class Mesh : IList<Face>
 {
     public List<Vertex> Vertices { get; private set; } = default!;
     public List<Face> Faces { get; private set; } = default!;
-    public long Content { get; set; } = 0;
+
+    public int Count => ((ICollection<Face>)Faces).Count;
+
+    public bool IsReadOnly => ((ICollection<Face>)Faces).IsReadOnly;
+
+    public Face this[int index] { get => ((IList<Face>)Faces)[index]; set => ((IList<Face>)Faces)[index] = value; }
+
     // private SortedSet<int> _removedVertices = new();
     private readonly SortedSet<int> _removedFaces = new();
     private Mesh() { }
@@ -158,7 +165,6 @@ public class Mesh
                 Material = 0,
             });
         }
-        Content = content;
     }
     public int AddFace(Face face)
     {
@@ -218,7 +224,6 @@ public class Mesh
 
     public MeshContext ToContext(float cellSize = 1e-4f)
     {
-        Console.WriteLine("BIMBO!!!!!");
         var grid = new Dictionary<(long, long, long), List<int>>();
         for (int i = 0; i < Vertices.Count; ++i)
         {
@@ -277,6 +282,79 @@ public class Mesh
                 Material = f.Material,
             };
         }
-        return new MeshContext(vertices.ToArray(), corners.ToArray(), faces, Content);
+        return new MeshContext(vertices.ToArray(), corners.ToArray(), faces);
     }
+
+    public int IndexOf(Face item)
+    {
+        return ((IList<Face>)Faces).IndexOf(item);
+    }
+
+    public void Insert(int index, Face item)
+    {
+        ((IList<Face>)Faces).Insert(index, item);
+    }
+
+    public void RemoveAt(int index)
+    {
+        ((IList<Face>)Faces).RemoveAt(index);
+    }
+
+    public void Add(Face item)
+    {
+        ((ICollection<Face>)Faces).Add(item);
+    }
+
+    public void Clear()
+    {
+        ((ICollection<Face>)Faces).Clear();
+    }
+
+    public bool Contains(Face item)
+    {
+        return ((ICollection<Face>)Faces).Contains(item);
+    }
+
+    public void CopyTo(Face[] array, int arrayIndex)
+    {
+        ((ICollection<Face>)Faces).CopyTo(array, arrayIndex);
+    }
+
+    public bool Remove(Face item)
+    {
+        return ((ICollection<Face>)Faces).Remove(item);
+    }
+
+    public IEnumerator<Face> GetEnumerator()
+    {
+        return ((IEnumerable<Face>)Faces).GetEnumerator();
+    }
+
+    IEnumerator IEnumerable.GetEnumerator()
+    {
+        return ((IEnumerable)Faces).GetEnumerator();
+    }
+}
+
+public class Brush
+{
+    public List<(Vector4 Plane, long Flags)> Sides { get; }
+    public long Content { get; set; }
+    public Brush(IEnumerable<(Vector4 Plane, long Flags)> sides, long content)
+    {
+        Sides = sides.ToList();
+        Content = content;
+    }
+}
+
+public record struct Vector3i(int X, int Y, int Z) { }
+
+public class TreeNode<TLeafContent> where TLeafContent : class
+{
+    public Vector4 Plane { get; init; }
+    public Vector3i Min { get; init; }
+    public Vector3i Max { get; init; }
+    public TreeNode<TLeafContent> Back { get; init; }
+    public TreeNode<TLeafContent> Front { get; init; }
+    public TLeafContent? Content { get; init; } = null;
 }

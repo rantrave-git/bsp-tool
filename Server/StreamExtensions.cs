@@ -63,10 +63,7 @@ public static class StreamExtensions
         // read faces
         var faces = await stream.TryReadArray<FaceData>(cancellationToken);
         if (faces == null) return null;
-        // read content
-        var content = await stream.TryRead<long>(cancellationToken);
-        if (content == null) return null;
-        return new MeshContext(vertices, corners, faces, content.Value);
+        return new MeshContext(vertices, corners, faces);
     }
     private static void DoWrite(Stream stream, string message)
     {
@@ -127,6 +124,5 @@ public static class StreamExtensions
         await stream.WriteArray(mesh.Vertices.AsMemory());
         await stream.WriteArray(mesh.Corners.AsMemory());
         await stream.WriteArray(mesh.Faces.AsMemory());
-        stream.Write(mesh.Content);
     }
 }
