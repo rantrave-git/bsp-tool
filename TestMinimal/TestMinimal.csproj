@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <!-- <ImplicitUsings>enable</ImplicitUsings> -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <SelfContained>true</SelfContained>
+
+    <PublishAot>true</PublishAot>
+    <!-- <PublishSingleFile>true</PublishSingleFile> -->
+
+    <StripSymbols>true</StripSymbols>
+    <OptimizationPreference>Speed</OptimizationPreference>
+
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- <PackageReference Include="Vk" Version="1.0.25" /> -->
+    <!-- <PackageReference Include="Vulkan" Version="0.5.1" /> -->
+    <PackageReference Include="AwesomeSockets" Version="2.1.18" />
+    <PackageReference Include="Silk.NET.Vulkan" Version="2.17.1" />
+    <PackageReference Include="Silk.NET.Vulkan.Extensions.EXT" Version="2.17.1" />
+  </ItemGroup>
+
+</Project>
