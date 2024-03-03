@@ -72,6 +72,7 @@ public class PortalGraph<THull, TEdgeHull, TContent>
     public List<Dictionary<int, Classification>> AreaGraph = default!;
     public AABB Box = default!;
     public BspTree<THull, TEdgeHull, TContent> Tree = default!;
+    public List<Brush>? Brushes;
     private PortalGraph() { }
     public static PortalGraph<THull, TEdgeHull, TContent> Build(BspTree<THull, TEdgeHull, TContent> tree, IAreaBuilder<TContent> areaBuilder)
     {
@@ -266,6 +267,10 @@ public class PortalGraph<THull, TEdgeHull, TContent>
         {
             Leafs[i].flags = (LeafData[i].Area % 2) == 0 == evenIsExternal ? @external : @internal;
         }
+    }
+    public void GetBrushes(int leaf)
+    {
+
     }
     void BuildPassGraph(List<Vector<float>> anchors)
     {

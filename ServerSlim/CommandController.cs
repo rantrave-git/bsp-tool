@@ -1,17 +1,12 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Sockets;
-using BenchmarkDotNet.Loggers;
-using Bsp.Common.Geometry;
+using Bsp.BspFormat;
+// using Bsp.Common.Geometry;
 using Bsp.Server.Abstractions;
-using Microsoft.Extensions.Logging;
+// using Microsoft.Extensions.Logging;
 
 namespace Bsp.Server;
-public interface IMeshBsp
-{
-    Mesh[] ConvexSplit(Mesh sourceMesh);
-}
-
 
 public class CommandController : ICommandController
 {
@@ -51,6 +46,10 @@ public class CommandController : ICommandController
     public static void Success(Stream stream)
     {
         stream.Write((int)Status.Success);
+    }
+    public static void Fail(Stream stream)
+    {
+        stream.Write((int)Status.FailedRequest);
     }
     public async Task StartAsync(int port, CancellationToken cancellationToken = default)
     {
@@ -95,7 +94,7 @@ public class CommandController : ICommandController
                 var command = BitConverter.ToInt32(recvBuffer.AsSpan(0, headerLength));
                 if (_handlers.TryGetValue(command, out var handler))
                 {
-                    Console.WriteLine("Received command: {command}", command);
+                    Console.WriteLine($"Received command: {command}");
                     // read mesh
                     ICommandProcessor processor;
                     using (var cts = new CancellationTokenSource(10000))
@@ -113,7 +112,7 @@ public class CommandController : ICommandController
                         catch (CommandHandlerException e)
                         {
                             stream.Write((int)Status.FailedRequest);
-                            Console.WriteLine("{message}\nRequest failed [{command}]", e.Message, command);
+                            Console.WriteLine($"{e.Message}\nRequest failed [{command}]");
                             await stream.WriteMessage($"Request failed [{command}]. {e.Message}");
                             break;
                         }
@@ -125,15 +124,15 @@ public class CommandController : ICommandController
                     }
                     catch (Exception e)
                     {
+                        Console.WriteLine($"Failed [{command}]");
                         stream.Write((int)Status.InternalError);
-                        Console.WriteLine("Failed [{command}]", command);
                         await stream.WriteMessage($"Failed [{command}]. {e.Message}");
                         throw;
                     }
                     if (success != null)
                     {
+                        Console.WriteLine($"Process failed [{command}]");
                         stream.Write((int)Status.FailedProcess);
-                        Console.WriteLine("Process failed [{command}]", command);
                         await stream.WriteMessage($"Process failed [{command}]. {success}");
                         break;
                     }

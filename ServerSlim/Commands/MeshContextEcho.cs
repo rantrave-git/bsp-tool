@@ -1,4 +1,4 @@
-using Bsp.Common.Geometry;
+using Bsp.BspFormat;
 using Bsp.Server.Abstractions;
 
 namespace Bsp.Server.Commands;
@@ -17,7 +17,7 @@ public class MeshContextEcho : ICommandHandler
         public async ValueTask<string?> ResponseAsync(Stream stream, IProgressHandler progress)
         {
             CommandController.Success(stream);
-            await stream.WriteMesh(_meshContext);
+            await stream.WriteMeshAsync(_meshContext);
             return null;
         }
     }

@@ -96,6 +96,22 @@ public class BspNode<TEdgeHull, TContent> where TEdgeHull : class, IHull<TEdgeHu
         this.edge = edge;
         this.flags = default!;
     }
+    public void Optimize()
+    {
+        if (edge == null) return;
+        back!.Optimize();
+        front!.Optimize();
+
+        if (back.edge == null && front.edge == null)
+        {
+            if (Object.Equals(this.back.flags, this.front.flags))
+            {
+                edge = null;
+                flags = back.flags;
+                back = front = null;
+            }
+        }
+    }
     public BspNode<TEdgeHull, TContent> SetChild(Side side, BspNode<TEdgeHull, TContent> node)
     {
         if (side == Side.Incident)

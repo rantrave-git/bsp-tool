@@ -68,17 +68,17 @@ public struct Basis3D
 
     public Basis3D() { }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 TransformNormal(Vector3 normal) =>
+    public readonly Vector3 TransformNormal(Vector3 normal) =>
         new(Vector3.Dot(normal, Tangent), Vector3.Dot(normal, Binormal), Vector3.Dot(normal, Normal));
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 TransformNormal(Vector4 normal) => TransformNormal(normal.XYZ());
+    public readonly Vector3 TransformNormal(Vector4 normal) => TransformNormal(normal.XYZ());
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 Transform(Vector3 pos) => TransformNormal(pos) - Origin;
+    public readonly Vector3 Transform(Vector3 pos) => TransformNormal(pos) - Origin;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 Transform(Vector4 pos) => Transform(pos.XYZ());
+    public readonly Vector3 Transform(Vector4 pos) => Transform(pos.XYZ());
 
-    public Vector4 Plane => new(Normal, Origin.Z);
-    public Basis3D Flipped => new()
+    public readonly Vector4 Plane => new(Normal, Origin.Z);
+    public readonly Basis3D Flipped => new()
     {
         Tangent = -Tangent,
         Binormal = -Binormal,
@@ -86,13 +86,13 @@ public struct Basis3D
         Origin = -Origin,
     };
 
-    public Vector3 AnyLocalPlane = new(1.0f, 0.0f, 0.0f);
+    public readonly Vector3 AnyLocalPlane = new(1.0f, 0.0f, 0.0f);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsFlip(Basis3D other) => Vector3.Dot(Normal, other.Normal) < 0.0f;
+    public readonly bool IsFlip(Basis3D other) => Vector3.Dot(Normal, other.Normal) < 0.0f;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 Plane2D(Vector3 v0, Vector3 v1, out float t0, out float t1)
+    public readonly Vector3 Plane2D(Vector3 v0, Vector3 v1, out float t0, out float t1)
     {
         // plane: (n, x) - w = 0
         var dn = Vector3.Cross(v1 - v0, Normal);
@@ -103,7 +103,7 @@ public struct Basis3D
         return p;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public float GetPos(Vector3 plane, Vector3 pos) =>
+    public readonly float GetPos(Vector3 plane, Vector3 pos) =>
         Vector2.Dot(new Vector2(Vector3.Dot(pos, Tangent),  // - plane.Z * plane.X,
                                 Vector3.Dot(pos, Binormal)),// - plane.Z * plane.Y),
                     new Vector2(-plane.Y, plane.X));
@@ -129,7 +129,7 @@ public struct Basis3D
         };
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining | MethodImplOptions.AggressiveOptimization)]
-    public Vector3 Project(Vector4 plane)
+    public readonly Vector3 Project(Vector4 plane)
     {
         var pn = TransformNormal(plane);
         var nrm = pn.XY().Length();
@@ -138,13 +138,13 @@ public struct Basis3D
         return new Vector3(pn.X, pn.Y, pw);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 Point(float u, float v) => u * Tangent + v * Binormal + Origin.Z * Normal;
+    public readonly Vector3 Point(float u, float v) => u * Tangent + v * Binormal + Origin.Z * Normal;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector3 Point(Vector2 uv) => Point(uv.X, uv.Y);
+    public readonly Vector3 Point(Vector2 uv) => Point(uv.X, uv.Y);
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public float Dist(Vector3 x) => Vector3.Dot(Normal, x) - Origin.Z;
+    public readonly float Dist(Vector3 x) => Vector3.Dot(Normal, x) - Origin.Z;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Side Classify(Vector3 point)
+    public readonly Side Classify(Vector3 point)
     {
         var x = Dist(point);
         if (x > Linealg.Eps) return Side.Front;
@@ -152,7 +152,7 @@ public struct Basis3D
         return Side.Incident;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Side ClassifyStrict(Vector3 point)
+    public readonly Side ClassifyStrict(Vector3 point)
     {
         var x = Dist(point);
         if (x < 0.0f) return Side.Back;
@@ -160,7 +160,7 @@ public struct Basis3D
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Classification ClassifyTo(Basis3D splitter)
+    public readonly Classification ClassifyTo(Basis3D splitter)
     {
         // 1 to 10000 precision comparison
         var nn = Vector3.Dot(splitter.Normal, Normal);
@@ -174,7 +174,7 @@ public struct Basis3D
         return Linealg.Classify(x, 4);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Classification ClassifyTo(Vector4 splitterPlane)
+    public readonly Classification ClassifyTo(Vector4 splitterPlane)
     {
         // 1 to 10000 precision comparison
         var norm = splitterPlane.XYZ();
@@ -190,7 +190,19 @@ public struct Basis3D
         return Linealg.Classify(x, 4);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsCoincident(Vector4 plane) => (ClassifyTo(plane) & Classification.NotParallel) == 0;
+    public readonly bool IsCoincident(Vector4 plane) => (ClassifyTo(plane) & Classification.NotParallel) == 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Basis3D Orthogonal(Basis2D localPlane)
+    {
+        var n = localPlane.Normal.X * Tangent + localPlane.Normal.Y * Binormal;
+        return new Basis3D()
+        {
+            Tangent = Normal,
+            Binormal = Vector3.Cross(n, Normal),
+            Normal = n,
+            Origin = n * localPlane.Origin.Y,
+        };
+    }
 }
 
 public struct Basis2D
@@ -200,25 +212,25 @@ public struct Basis2D
     public Vector2 Origin = Vector2.Zero;
     public Basis2D() { }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 TransformNormal(Vector2 normal) =>
+    public readonly Vector2 TransformNormal(Vector2 normal) =>
         new(Vector2.Dot(normal, Tangent), Vector2.Dot(normal, Normal));
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 TransformNormal(Vector3 normal) => TransformNormal(normal.XY());
+    public readonly Vector2 TransformNormal(Vector3 normal) => TransformNormal(normal.XY());
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 Transform(Vector2 pos) => TransformNormal(pos) - Origin;
+    public readonly Vector2 Transform(Vector2 pos) => TransformNormal(pos) - Origin;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 Transform(Vector3 pos) => Transform(pos.XY());
+    public readonly Vector2 Transform(Vector3 pos) => Transform(pos.XY());
 
-    public Vector2 AnyLocalPlane = new(1.0f, 0.0f);
-    public Vector3 Plane => new(Normal, Origin.Y);
-    public Basis2D Flipped => new()
+    public readonly Vector2 AnyLocalPlane = new(1.0f, 0.0f);
+    public readonly Vector3 Plane => new(Normal, Origin.Y);
+    public readonly Basis2D Flipped => new()
     {
         Tangent = -Tangent,
         Normal = -Normal,
         Origin = -Origin,
     };
 
-    public float GetTangent(Vector2 global) => Vector2.Dot(Tangent, global);
+    public readonly float GetTangent(Vector2 global) => Vector2.Dot(Tangent, global);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Basis2D TangentSpace(Vector3 plane)
@@ -234,21 +246,21 @@ public struct Basis2D
         };
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool IsFlip(Basis2D other) => Vector2.Dot(Normal, other.Normal) < 0.0f;
+    public readonly bool IsFlip(Basis2D other) => Vector2.Dot(Normal, other.Normal) < 0.0f;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 Point(float t) => Normal * Origin.Y + Tangent * t;
+    public readonly Vector2 Point(float t) => Normal * Origin.Y + Tangent * t;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public float Dist(Vector2 x) => Vector2.Dot(Normal, x) - Origin.Y;
+    public readonly float Dist(Vector2 x) => Vector2.Dot(Normal, x) - Origin.Y;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Vector2 Project(Vector3 plane)
+    public readonly Vector2 Project(Vector3 plane)
     {
         var den = Vector2.Dot(Tangent, plane.XY());
         var t = Vector2.Dot(new Vector2(plane.Z, Origin.Y), new Vector2(1.0f, -Vector2.Dot(Normal, plane.XY()))) / den;
         return den > 0 ? new Vector2(1.0f, t) : new Vector2(-1.0f, -t);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Side Classify(Vector2 point)
+    public readonly Side Classify(Vector2 point)
     {
         var x = Dist(point);
         if (x > Linealg.Eps) return Side.Front;
@@ -256,14 +268,14 @@ public struct Basis2D
         return Side.Incident;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Side ClassifyStrict(Vector2 point)
+    public readonly Side ClassifyStrict(Vector2 point)
     {
         var x = Dist(point);
         if (x < 0.0f) return Side.Back;
         return Side.Front;
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Classification ClassifyTo(Basis2D splitter)
+    public readonly Classification ClassifyTo(Basis2D splitter)
     {
         // 1 to 10000 precision comparison
         var nn = Vector2.Dot(splitter.Normal, Normal);
@@ -276,7 +288,7 @@ public struct Basis2D
         return Linealg.Classify(x, 2);
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public Classification ClassifyTo(Vector3 splitterPlane)
+    public readonly Classification ClassifyTo(Vector3 splitterPlane)
     {
         // 1 to 10000 precision comparison
         var norm = splitterPlane.XY();
@@ -292,6 +304,17 @@ public struct Basis2D
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool IsCoincident(Vector3 plane) => (ClassifyTo(plane) & Classification.NotParallel) == 0;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Basis2D Orthogonal(Vector2 localPlane)
+    {
+        var n = Tangent * localPlane.X;
+        return new Basis2D()
+        {
+            Tangent = n.Ort(),
+            Normal = n,
+            Origin = n * localPlane.Y,
+        };
+    }
 }
 
 public static class LinealgExtensions
@@ -348,6 +371,7 @@ public static class LinealgExtensions
         return new Vector2(t.Y, -t.X).Plane(v0);
     }
     public static Vector2 Ort(this Vector2 v) => new(-v.Y, v.X);
+    public static Vector2 CoOrt(this Vector2 v) => new(v.Y, -v.X);
     public static Vector4 MakePlane(Vector3 v0, Vector3 v1, Vector3 v2)
     {
         var n = Vector3.Normalize(Vector3.Cross(v1 - v0, v2 - v0));

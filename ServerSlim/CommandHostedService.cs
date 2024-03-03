@@ -33,18 +33,13 @@ class CommandHostedService : IDisposable
             Console.WriteLine(e.Message + "\nTerminating...");
         }
     }
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task Run(CancellationToken cancellationToken)
     {
-        _running = Watch(_controller.StartAsync(_config.Port, _stopper.Token));
-        return Task.CompletedTask;
+        using (cancellationToken.Register(() => _stopper.Cancel()))
+        {
+            _running = Watch(_controller.StartAsync(_config.Port, _stopper.Token));
+            await _running;
+        }
     }
-
-    public async Task StopAsync(CancellationToken cancellationToken)
-    {
-        if (_running == null) return;
-        _stopper.Cancel();
-        await _running;
-    }
-
     public void Dispose() => _stopper.Dispose();
 }

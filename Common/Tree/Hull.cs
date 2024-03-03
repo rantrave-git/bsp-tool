@@ -1,6 +1,7 @@
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using BenchmarkDotNet.Attributes;
 using Bsp.Common.Geometry;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
@@ -142,6 +143,7 @@ public interface IContentHull<THull, TEdgeHull>
     IList<TEdgeHull> Boundaries();
     THull Coplanar(List<TEdgeHull> boundaries);
     (THull, ISpaceTransformer<TEdgeHull>) Transform(THull from);
+    THull Orthogonal(TEdgeHull edge);
     // TEdgeHull Project(TEdgeHull );
 }
 
@@ -448,6 +450,14 @@ public class Hull1D : IHull<Hull1D>, IContentHull<Hull1D, Hull0D>
     }
 
     public Hull1D Union(Hull1D other) => Coplanar(MathF.Min(min, other.min), MathF.Max(max, other.max));
+
+    public Hull1D Orthogonal(Hull0D edge) => new Hull1D()
+    {
+        Local = Local.Orthogonal(edge.Plane),
+        max = 0,
+        min = 0,
+        Empty = true
+    };
 }
 
 public class Hull2D : IHull<Hull2D>, IBoxable, IContentHull<Hull2D, Hull1D>
@@ -1007,6 +1017,12 @@ public class Hull2D : IHull<Hull2D>, IBoxable, IContentHull<Hull2D, Hull1D>
         };
         return (h, t);
     }
+
+    public Hull2D Orthogonal(Hull1D edge) => new Hull2D()
+    {
+        Local = Local.Orthogonal(edge.Local),
+        Empty = true,
+    };
 }
 
 public class Hull3D : IHull<Hull3D>, IBoxable, IContentHull<Hull3D, Hull2D>
@@ -1245,4 +1261,9 @@ public class Hull3D : IHull<Hull3D>, IBoxable, IContentHull<Hull3D, Hull2D>
     public (Hull3D, ISpaceTransformer<Hull2D>) Transform(Hull3D from) => (this, new H2Transformer());
     public float LimitDistance(Side side, float distance, Hull3D other) => throw new NotImplementedException();
     public Vector<float> PointByDistance(Side side, float distance) => throw new NotImplementedException();
+
+    public Hull3D Orthogonal(Hull2D edge)
+    {
+        return this;
+    }
 }

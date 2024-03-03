@@ -12,11 +12,37 @@
             },
             "request": "launch",
             "preLaunchTask": "build",
-            // If you have changed target frameworks, make sure to update the program path.
             "program": "${workspaceFolder}/Server/bin/Debug/net7.0/Bsp.Server.dll",
             "args": [],
             "cwd": "${workspaceFolder}/Server",
-            // For more information about the 'console' field, see https://aka.ms/VSCode-CS-LaunchJson-Console
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "ServerSlim Debug",
+            "type": "coreclr",
+            "env":{
+                "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE": "false"
+            },
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/ServerSlim/bin/Debug/net7.0/Bsp.ServerSlim.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/Server",
+            "console": "internalConsole",
+            "stopAtEntry": false
+        },
+        {
+            "name": "BspFormat Debug",
+            "type": "coreclr",
+            "env":{
+                "DOTNET_HOSTBUILDER__RELOADCONFIGONCHANGE": "false"
+            },
+            "request": "launch",
+            "preLaunchTask": "build",
+            "program": "${workspaceFolder}/BspFormat/bin/Debug/net7.0/Bsp.BspFormat.dll",
+            "args": [],
+            "cwd": "${workspaceFolder}/Server",
             "console": "internalConsole",
             "stopAtEntry": false
         },

@@ -74,7 +74,6 @@ public struct FaceData
     public int LoopStart;
     public int LoopTotal;
     public int Material;
-    public int _pad;
 }
 public class MeshContext
 {

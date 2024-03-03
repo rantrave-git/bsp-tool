@@ -100,16 +100,15 @@ public class BspTree<THull, TEdgeHull, TContent> : IBspTree<THull, TContent>
         }
     }
 
-    public void Add(IBspTree<TEdgeHull, TContent> edge, ISpaceContentOperation<TContent> edgeOperation)
+    public void SplitLeafs() {
+        
+    }
+
+    private void AddToSubtree(BspNode<TEdgeHull, TContent> subtree, IBspTree<TEdgeHull, TContent> edge, ISpaceContentOperation<TContent> edgeOperation)
     {
-        if (Root.edge == null)
-        {
-            // empty tree
-            Root = BspTree<THull, TEdgeHull, TContent>.SplitLeaf(new BspNode<TEdgeHull, TContent>(edge), Root);
-            return;
-        }
+
         var queue = new Queue<(BspNode<TEdgeHull, TContent> Splitter, BspNode<TEdgeHull, TContent> Node)>();
-        queue.Enqueue((Root, new BspNode<TEdgeHull, TContent>(edge)));
+        queue.Enqueue((subtree, new BspNode<TEdgeHull, TContent>(edge)));
         while (queue.TryDequeue(out var current))
         {
             var (b, f) = current.Node.Split(current.Splitter, edgeOperation, out var flip);
@@ -139,6 +138,17 @@ public class BspTree<THull, TEdgeHull, TContent> : IBspTree<THull, TContent>
                 }
             }
         }
+    }
+
+    public void Add(IBspTree<TEdgeHull, TContent> edge, ISpaceContentOperation<TContent> edgeOperation)
+    {
+        if (Root.edge == null)
+        {
+            // empty tree
+            Root = BspTree<THull, TEdgeHull, TContent>.SplitLeaf(new BspNode<TEdgeHull, TContent>(edge), Root);
+            return;
+        }
+        AddToSubtree(Root, edge, edgeOperation);
     }
     private void AddSplitterNode(BspNode<TEdgeHull, TContent> subtree, BspNode<TEdgeHull, TContent> node,
                      ISpaceContentOperation<TContent> edgeOperation, Dictionary<long, Dictionary<long, Side>> order,
@@ -203,6 +213,13 @@ public class BspTree<THull, TEdgeHull, TContent> : IBspTree<THull, TContent>
             }
         }
     }
+
+    public void Optimize()
+    {
+        if (Root == null) return;
+        Root.Optimize();
+    }
+
     private void SetLeaf(BspTree<THull, TEdgeHull, TContent> other, ISpaceContentOperation<TContent> operation,
         bool isinverse,
         BspNode<TEdgeHull, TContent> node, BspNode<TEdgeHull, TContent> leaf, Side side,
@@ -421,76 +438,10 @@ public class BspTree<THull, TEdgeHull, TContent> : IBspTree<THull, TContent>
                     BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref back, b, order);
 
                 }
-                // if (el.Subtree.edge == null)
-                // {
-                //     // if (el.Side < 0)
-                //     // {
-                //     //     BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref back, el.Subtree, order);
-                //     //     continue;
-                //     // }
-                //     // if (el.Side > 0)
-                //     // {
-                //     //     BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref front, el.Subtree, order);
-                //     //     continue;
-                //     // }
-                //     if (BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref back, el.Subtree, order))
-                //     {
-                //         BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref front, el.Subtree.Copy(), order);
-                //     }
-                //     else
-                //     {
-                //         BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref front, el.Subtree, order);
-                //     }
-                //     continue;
-                // }
-                // var (b, f) = el.Subtree.Split(current.Target, operation.EdgeOperation, out var flip);
-                // var relback = !flip ? el.Subtree.back! : el.Subtree.front!; // el.Subtree.GetChild(flip ? 1 : -1)!;
-                // var relfront = flip ? el.Subtree.back! : el.Subtree.front!; // el.Subtree.GetChild(flip ? -1 : 1)!;
-                // // var relfront = el.Subtree.front!;
-                // // var relback = el.Subtree.back!;
-                // if (f == b)
-                // {
-                //     // incident
-                //     // if (el.Side != 0) throw new AssertionException("Can't be incident");
-                //     subtreeStack.Push((relback, Side.Back));
-                //     subtreeStack.Push((relfront, Side.Front));
-                //     // current.Splitter.edge = b!.edge!.CloneProjected(current.Splitter.edge.Hull);
-                //     continue;
-                // }
-                // switch (el.Side)
-                // {
-                //     case Side.Front:
-                //         subtreeStack.Push((relback, Side.Front));
-                //         subtreeStack.Push((relfront, Side.Front));
-                //         break;
-                //     case Side.Back:
-                //         subtreeStack.Push((relback, Side.Back));
-                //         subtreeStack.Push((relfront, Side.Back));
-                //         break;
-                //     case Side.Incident:
-                //         subtreeStack.Push((relback, f == null ? Side.Back : Side.Incident));
-                //         subtreeStack.Push((relfront, b == null ? Side.Front : Side.Incident));
-                //         break;
-                // }
-
-                // if (f != null)
-                // {
-                //     // if (el.Side < 0) throw new AssertionException("Wrong side determined");
-                //     f.Detach();
-                //     BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref front, f, order);
-                // }
-                // if (b != null)
-                // {
-                //     // if (el.Side > 0) throw new AssertionException("Wrong side determined");
-                //     b.Detach();
-                //     BspOperationsHelper<TEdgeHull, TContent>.TryAdd(ref back, b, order);
-                // }
             }
 
             var bc = inplace ? current.Splitter.back! : current.Splitter.back!.Copy();
             var fc = inplace ? current.Splitter.front! : current.Splitter.front!.Copy();
-            // var fstr = front?.Print(64);
-            // var bstr = back?.Print(64);
 
             current.Target.SetChildren(bc, fc);
 
